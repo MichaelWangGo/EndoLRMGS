@@ -1,15 +1,16 @@
-<<<<<<< Updated upstream
+=======
 # EndoLRMGS
 =======
-<<<<<<< HEAD
-# EndoLRMGS
-=======
-Environment
+## Environment
 
+cd ./EndoGaussian
+wget https://github.com/CUHK-AIM-Group/EndoGaussian/tree/master/submodules
+git submodule update --init --recursive
+conda create -n EndoGaussian python=3.10
+pip install -r requirements.txt
+pip install -e submodules/depth-diff-gaussian-rasterization
+pip install -e submodules/simple-knn
 
-
->>>>>>> 18a6997 (update)
->>>>>>> Stashed changes
 ## Quick Start
 - Example usage is as follows:
 ## Inference
@@ -43,3 +44,5 @@ scared:
 accelerate launch --config_file ./configs/accelerate-train.yaml -m openlrm.launch train.lrm --config ./configs/train-sample.yaml --no-freeze_endo_gaussian --gaussian_config /workspace/EndoLRM2/EndoGaussian/arguments/scared/d6k4.py
   ```
 
+## Acknowledgement
+Thank EndoGaussian https://github.com/CUHK-AIM-Group/EndoGaussian.git, LRM https://yiconghong.me/LRM/ and OpenLRM https://github.com/3DTopia/OpenLRM.git
