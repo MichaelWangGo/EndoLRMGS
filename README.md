@@ -1,4 +1,15 @@
+<<<<<<< Updated upstream
 # EndoLRMGS
+=======
+<<<<<<< HEAD
+# EndoLRMGS
+=======
+Environment
+
+
+
+>>>>>>> 18a6997 (update)
+>>>>>>> Stashed changes
 ## Quick Start
 - Example usage is as follows:
 ## Inference
