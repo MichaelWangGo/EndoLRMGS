@@ -3,10 +3,22 @@
 Abstract: Complete reconstruction of surgical scenes is crucial for robot-assisted surgery (RAS). Deep depth estimation is promising but existing works struggle with depth discontinuities, resulting in noisy predictions at object boundaries and do not achieve complete reconstruction omitting occluded surfaces. 
 To address these issues we propose EndoLRMGS, that combines Large Reconstruction Modelling (LRM) and Gaussian Splatting (GS), for complete surgical scene reconstruction. GS reconstructs deformable tissues and LRM generates 3D models for surgical tools while position and scale are subsequently optimized by introducing orthogonal perspective joint projection optimization (OPjPO) to enhance accuracy.
 
+## Architecture
+
+![m3dris-architecture](media/pipeline.png)
+
+## Prerequisites
+- Python 3.10
+- CUDA-compatible GPU
+
 ## Installation
 
 ```bash
-# Clone and setup submodules
+# Clone the repository
+git clone https://github.com/your-username/EndoLRMGS.git
+cd EndoLRMGS
+
+# Setup submodules
 cd ./EndoGaussian
 wget https://github.com/CUHK-AIM-Group/EndoGaussian/tree/master/submodules
 git submodule update --init --recursive
@@ -19,6 +31,22 @@ conda activate EndoGaussian
 pip install -r requirements.txt
 pip install -e submodules/depth-diff-gaussian-rasterization
 pip install -e submodules/simple-knn
+```
+
+## Dataset Structure
+Follow [DEVA](https://github.com/hkchengrex/Tracking-Anything-with-DEVA.git) to prepare the required annotations and binary masks.
+
+Example dataset structure:
+```tree
+endonerf/               # Root directory
+├── pulling/
+│   ├── Annotations/    # Surgical instruments color masks
+│   ├── binary_mask_deva/ # Surgical instruments binary masks
+│   ├── depth/         # Depth maps
+│   └── images/        # Left rectified images
+├── cutting_tissues_twice/
+├── scared/
+└── stereomis/
 ```
 
 ## Usage
@@ -109,3 +137,4 @@ This project builds upon the following works:
 - [EndoGaussian](https://github.com/CUHK-AIM-Group/EndoGaussian.git)
 - [LRM](https://yiconghong.me/LRM/)
 - [OpenLRM](https://github.com/3DTopia/OpenLRM.git)
+- [DEVA](https://github.com/hkchengrex/Tracking-Anything-with-DEVA.git)
