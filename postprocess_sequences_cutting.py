@@ -5,6 +5,9 @@ from scipy.spatial import ConvexHull
 import os
 import glob
 import pandas as pd
+import time
+
+from joblib import Parallel, delayed
 
 
 def perspective_project(points, K):
@@ -235,11 +238,12 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
         
         # 2. Get background points from depth
         _, bg_points = process_masked_region(mask, depth, K1)
-        
+        othor_start_time = time.perf_counter()
         # 3. Calculate orthographic matrix and scale factor
         ortho_matrix = calculate_orthographic_matrix(bg_points)
         scale_factor, _, _ = calculate_scale_factor(bg_points, transformed_points, ortho_matrix)
-        
+        othor_end_time = time.perf_counter()
+        print(f"Orthographic matrix and scale factor calculation took {othor_end_time - othor_start_time:.4f} seconds")
         # 4. Scale the transformed points
         scaled_points = transformed_points * scale_factor
 
@@ -302,39 +306,70 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
             initial_iou_scores.append(0.0)
             initial_projections.append(np.zeros((height, width), dtype=bool))
         
+        pers_start_time = time.perf_counter()
+
+
+        def eval_transform(dx, dy, dz, tool_pts, mask_bin, K, H, W):
+            pts = tool_pts + np.array([dx, dy, dz])
+            proj = perspective_project(pts, K)
+            mask = np.zeros((H, W), bool)
+            valid = (proj[:,0]>=0)&(proj[:,0]<W)&(proj[:,1]>=0)&(proj[:,1]<H)
+            if not np.any(valid):
+                return 1.0, None, 0.0
+            coords = proj[valid].astype(int)
+            mask[coords[:,1], coords[:,0]] = True
+            mask = cv2.dilate(mask.astype(np.uint8), np.ones((3,3),np.uint8)).astype(bool)
+            inter = np.sum(mask & mask_bin)
+            uni   = np.sum(mask | mask_bin)
+            iou   = inter/uni if uni>0 else 0
+            score = 1.0 - iou
+            return score, mask, iou
+
+        # inside your loop before:
+        params = [(x,y,z) for x in x_translations
+                            for y in y_translations
+                            for z in z_translations]
+        results = Parallel(n_jobs=-1)(
+            delayed(eval_transform)(x,y,z, tool_points, mask_binary, K1, height, width)
+            for x,y,z in params
+        )
+        # pick best
+        best_score, best_mask, best_iou = min(results, key=lambda r: r[0])
+
         # Vectorized position optimization
-        for x in x_translations:
-            for y in y_translations:
-                for z in z_translations:
-                    # Apply translation
-                    translated_points = tool_points + np.array([x, y, z])
+        # for x in x_translations:
+        #     for y in y_translations:
+        #         for z in z_translations:
+        #             # Apply translation
+        #             translated_points = tool_points + np.array([x, y, z])
                     
-                    # Project points efficiently
-                    projected_points = perspective_project(translated_points, K1)
+        #             # Project points efficiently
+        #             projected_points = perspective_project(translated_points, K1)
                     
-                    # Create and evaluate projection mask
-                    proj_mask = np.zeros((height, width), dtype=bool)
-                    valid_points = (projected_points[:, 0] >= 0) & (projected_points[:, 0] < width) & \
-                                 (projected_points[:, 1] >= 0) & (projected_points[:, 1] < height)
+        #             # Create and evaluate projection mask
+        #             proj_mask = np.zeros((height, width), dtype=bool)
+        #             valid_points = (projected_points[:, 0] >= 0) & (projected_points[:, 0] < width) & \
+        #                          (projected_points[:, 1] >= 0) & (projected_points[:, 1] < height)
                     
-                    if np.any(valid_points):
-                        coords = projected_points[valid_points].astype(int)
-                        proj_mask[coords[:, 1], coords[:, 0]] = True
+        #             if np.any(valid_points):
+        #                 coords = projected_points[valid_points].astype(int)
+        #                 proj_mask[coords[:, 1], coords[:, 0]] = True
                         
-                        # Quick dilation for better coverage
-                        proj_mask = cv2.dilate(proj_mask.astype(np.uint8), np.ones((3,3), np.uint8)).astype(bool)
+        #                 # Quick dilation for better coverage
+        #                 proj_mask = cv2.dilate(proj_mask.astype(np.uint8), np.ones((3,3), np.uint8)).astype(bool)
                         
-                        # Compute IoU instead of just area difference
-                        intersection = np.sum(proj_mask & mask_binary)
-                        union = np.sum(proj_mask | mask_binary)
-                        score = 1.0 - (intersection / union if union > 0 else 0)
+        #                 # Compute IoU instead of just area difference
+        #                 intersection = np.sum(proj_mask & mask_binary)
+        #                 union = np.sum(proj_mask | mask_binary)
+        #                 score = 1.0 - (intersection / union if union > 0 else 0)
                         
-                        if score < best_score:
-                            best_score = score
-                            best_transform = np.array([x, y, z])
-                            best_projection = proj_mask
-                            best_iou = intersection / union if union > 0 else 0  # Store IoU directly
-        
+        #                 if score < best_score:
+        #                     best_score = score
+        #                     best_transform = np.array([x, y, z])
+        #                     best_projection = proj_mask
+        #                     best_iou = intersection / union if union > 0 else 0  # Store IoU directly
+        pers_end_time = time.perf_counter()
+        print(f"Perspective Optimization took {pers_end_time - pers_start_time:.4f} seconds")
         # After optimization, store final IoU
         final_iou_scores.append(best_iou)
         
@@ -404,7 +439,7 @@ if __name__ == "__main__":
     pcd_base_dir = "/workspace/EndoLRM2/endonerf/cutting/zxhezexin/openlrm-mix-base-1.1/meshes"
     depth_base_dir = "/workspace/EndoLRM2/endonerf/cutting/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
     mask_base_dir = "/workspace/dataset/endolrm_dataset/endonerf/cutting_tissues_twice/Annotations"
-    output_base_dir = "/workspace/EndoLRM2/endonerf/cutting/zxhezexin/openlrm-mix-base-1.1/final_tools"
+    output_base_dir = "/workspace/EndoLRM2/deleteme"
     
     # Create output folder if it doesn't exist
     os.makedirs(output_base_dir, exist_ok=True)

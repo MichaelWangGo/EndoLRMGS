@@ -5,6 +5,7 @@ from scipy.spatial import ConvexHull
 import os
 import glob
 import pandas as pd
+import time
 
 
 def perspective_project(points, K):
@@ -224,6 +225,7 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
 
     for pcd, mask, idx in tool_pairs:
         # 1. Transform points
+        
         points = np.asarray(pcd.points)
         colors = np.asarray(pcd.colors)
         transformed_points = transform_points(points, T_source, T_target)
@@ -235,7 +237,7 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
         
         # 2. Get background points from depth
         _, bg_points = process_masked_region(mask, depth, K1)
-        
+        start_time = time.perf_counter()
         # 3. Calculate orthographic matrix and scale factor
         ortho_matrix = calculate_orthographic_matrix(bg_points)
         scale_factor, _, _ = calculate_scale_factor(bg_points, transformed_points, ortho_matrix)
@@ -334,7 +336,8 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
                             best_transform = np.array([x, y, z])
                             best_projection = proj_mask
                             best_iou = intersection / union if union > 0 else 0  # Store IoU directly
-            
+        end_time = time.perf_counter()
+        print(f"Optimization took {end_time - start_time:.4f} seconds")
         # After optimization, store final IoU
         final_iou_scores.append(best_iou)
         
@@ -404,7 +407,7 @@ if __name__ == "__main__":
     pcd_base_dir = "/workspace/EndoLRM2/endonerf/pulling/zxhezexin/openlrm-mix-base-1.1/meshes"
     depth_base_dir = "/workspace/EndoLRM2/endonerf/pulling/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
     mask_base_dir = "/workspace/dataset/endolrm_dataset/endonerf/pulling/Annotations"
-    output_base_dir = "/workspace/EndoLRM2/endonerf/pulling/zxhezexin/openlrm-mix-base-1.1/final_tools"
+    output_base_dir = "/workspace/EndoLRM2/deleteme"
     
     # Create output folder if it doesn't exist
     os.makedirs(output_base_dir, exist_ok=True)
