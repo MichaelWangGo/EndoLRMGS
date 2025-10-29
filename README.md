@@ -20,8 +20,8 @@ git clone https://github.com/your-username/EndoLRMGS.git
 cd EndoLRMGS
 
 # Create and setup Python environment
-conda create -n EndoGaussian python=3.10
-conda activate EndoGaussian
+conda create -n endolrmgs python=3.10
+conda activate endolrmgs
 
 # Install dependencies
 pip install -r requirements.txt
