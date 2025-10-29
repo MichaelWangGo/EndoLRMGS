@@ -19,19 +19,16 @@ To address these issues we propose EndoLRMGS, that combines Large Reconstruction
 git clone https://github.com/your-username/EndoLRMGS.git
 cd EndoLRMGS
 
-# Setup submodules
-cd ./EndoGaussian
-wget https://github.com/CUHK-AIM-Group/EndoGaussian/tree/master/submodules
-git submodule update --init --recursive
-
 # Create and setup Python environment
 conda create -n EndoGaussian python=3.10
 conda activate EndoGaussian
 
 # Install dependencies
 pip install -r requirements.txt
+cd FMGaussianSplatting
 pip install -e submodules/depth-diff-gaussian-rasterization
 pip install -e submodules/simple-knn
+cd ..
 ```
 
 ## Dataset Structure
