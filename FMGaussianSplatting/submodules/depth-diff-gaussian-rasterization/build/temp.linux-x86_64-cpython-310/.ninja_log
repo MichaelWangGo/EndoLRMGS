@@ -1,0 +1,11 @@
+# ninja log v5
+0	9775	1747412228561244784	/workspace/MipEndoGaussian/submodules/depth-diff-gaussian-rasterization/build/temp.linux-x86_64-cpython-310/cuda_rasterizer/rasterizer_impl.o	840662463ecc0d46
+0	15912	1747412234697588400	/workspace/MipEndoGaussian/submodules/depth-diff-gaussian-rasterization/build/temp.linux-x86_64-cpython-310/ext.o	6f2f1b7c753dc64d
+1	52366	1747412271139628693	/workspace/MipEndoGaussian/submodules/depth-diff-gaussian-rasterization/build/temp.linux-x86_64-cpython-310/rasterize_points.o	ff40e6e57731195b
+26	2515	1747412579176855797	/workspace/MipEndoGaussian/submodules/depth-diff-gaussian-rasterization/build/temp.linux-x86_64-cpython-310/cuda_rasterizer/forward.o	19697ed5a348e4bc
+25	2610	1747413036490649883	/workspace/MipEndoGaussian/submodules/depth-diff-gaussian-rasterization/build/temp.linux-x86_64-cpython-310/cuda_rasterizer/backward.o	caa2314431cdc21f
+4	2846	1761760285576065416	/workspace/EndoLRMGS/FMGaussianSplatting/submodules/depth-diff-gaussian-rasterization/build/temp.linux-x86_64-cpython-310/cuda_rasterizer/forward.o	8cc78c3465a43e01
+4	2911	1761760285640069100	/workspace/EndoLRMGS/FMGaussianSplatting/submodules/depth-diff-gaussian-rasterization/build/temp.linux-x86_64-cpython-310/cuda_rasterizer/backward.o	dfde736305423b83
+4	10303	1761760293028494354	/workspace/EndoLRMGS/FMGaussianSplatting/submodules/depth-diff-gaussian-rasterization/build/temp.linux-x86_64-cpython-310/cuda_rasterizer/rasterizer_impl.o	dd2975a81ab8959f
+4	17238	1761760299964893564	/workspace/EndoLRMGS/FMGaussianSplatting/submodules/depth-diff-gaussian-rasterization/build/temp.linux-x86_64-cpython-310/ext.o	382ee9512a767da5
+4	59108	1761760341819301873	/workspace/EndoLRMGS/FMGaussianSplatting/submodules/depth-diff-gaussian-rasterization/build/temp.linux-x86_64-cpython-310/rasterize_points.o	d3564a701cf5bce9

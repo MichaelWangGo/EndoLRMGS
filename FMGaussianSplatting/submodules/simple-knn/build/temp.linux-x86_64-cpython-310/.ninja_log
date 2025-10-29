@@ -1,0 +1,4 @@
+# ninja log v5
+0	9652	1747413063236169851	/workspace/MipEndoGaussian/submodules/simple-knn/build/temp.linux-x86_64-cpython-310/simple_knn.o	ea839b3e884b1fb5
+0	15034	1747413068616475470	/workspace/MipEndoGaussian/submodules/simple-knn/build/temp.linux-x86_64-cpython-310/ext.o	be7b603e28f9dc3b
+1	51796	1747413105374562161	/workspace/MipEndoGaussian/submodules/simple-knn/build/temp.linux-x86_64-cpython-310/spatial.o	bbd2315c0ee69428
