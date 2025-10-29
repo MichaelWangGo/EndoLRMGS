@@ -256,7 +256,6 @@ class Trainer(Runner):
 
     @property
     def global_step_in_epoch(self):
-        # import ipdb; ipdb.set_trace()
         return self.global_step % self.N_global_steps_per_epoch
 
     @abstractmethod
