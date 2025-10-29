@@ -53,15 +53,15 @@ endonerf/               # Root directory
 ## Usage
 
 ### Inference
-
+To access LRM pretrained model, please refer to https://huggingface.co/zxhezexin/openlrm-mix-base-1.1 and save the model in EndoLRMGS/checkpoint
 For EndoNerf pulling dataset:
 ```bash
 python -m openlrm.launch infer.lrm \
     --infer ./configs/infer-b-endonerf-pulling.yaml \
     --model_name zxhezexin/openlrm-mix-base-1.1 \
     --image_input /workspace/dataset/endolrm_dataset/endonerf/pulling/images \
-    --export_mesh false \
-    --gaussian_config /workspace/EndoLRM2/EndoGaussian/arguments/endonerf/pulling.py
+    --export_mesh True \
+    --gaussian_config /workspace/EndoLRMGS/FMGaussianSplatting/arguments/endonerf/pulling.py
 ```
 
 For EndoNerf cutting dataset:
@@ -71,7 +71,7 @@ python -m openlrm.launch infer.lrm \
     --model_name zxhezexin/openlrm-mix-base-1.1 \
     --image_input /workspace/dataset/endolrm_dataset/endonerf/cutting_tissues_twice/images \
     --export_mesh false \
-    --gaussian_config /workspace/EndoLRM2/EndoGaussian/arguments/endonerf/cutting_tissues_twice.py
+    --gaussian_config /workspace/EndoLRMGS/FMGaussianSplatting/arguments/endonerf/cutting.py
 ```
 
 For Stereomis dataset:
@@ -81,7 +81,7 @@ python -m openlrm.launch infer.lrm \
     --model_name zxhezexin/openlrm-mix-base-1.1 \
     --image_input /workspace/dataset/endolrm_dataset/stereomis/left_finalpass \
     --export_mesh false \
-    --gaussian_config /workspace/EndoLRM2/EndoGaussian/arguments/stereomis/stereomis.py
+    --gaussian_config /workspace/EndoLRMGS/FMGaussianSplatting/arguments/stereomis/stereomis_2_6.py
 ```
 
 For Scared dataset:
@@ -91,18 +91,18 @@ python -m openlrm.launch infer.lrm \
     --model_name zxhezexin/openlrm-mix-base-1.1 \
     --image_input /workspace/dataset/endolrm_dataset/scared/dataset_6/data/left_finalpass \
     --export_mesh false \
-    --gaussian_config /workspace/EndoLRM2/EndoGaussian/arguments/scared/d6k4.py
+    --gaussian_config /workspace/EndoLRMGS/FMGaussianSplatting/arguments/scared/d1k1.py
 ```
 
 ### Training
-
+To access LRM pretrained model, please refer to https://huggingface.co/zxhezexin/openlrm-mix-base-1.1 and save the model in EndoLRMGS/checkpoint
 For EndoNerf pulling dataset:
 ```bash
 accelerate launch --config_file ./configs/accelerate-train.yaml \
     -m openlrm.launch train.lrm \
     --config ./configs/train-sample.yaml \
-    --no-freeze_endo_gaussian \
-    --gaussian_config /workspace/EndoLRM2/EndoGaussian/arguments/endonerf/pulling.py
+    --no-freeze_gaussian \
+    --gaussian_config /workspace/EndoLRMGS/FMGaussianSplatting/arguments/endonerf/pulling.py
 ```
 
 For EndoNerf cutting dataset:
@@ -110,8 +110,8 @@ For EndoNerf cutting dataset:
 accelerate launch --config_file ./configs/accelerate-train.yaml \
     -m openlrm.launch train.lrm \
     --config ./configs/train-sample.yaml \
-    --no-freeze_endo_gaussian \
-    --gaussian_config /workspace/EndoLRM2/EndoGaussian/arguments/endonerf/cutting_tissues_twice.py
+    --no-freeze_gaussian \
+    --gaussian_config /workspace/EndoLRMGS/FMGaussianSplatting/arguments/endonerf/cutting.py
 ```
 
 For Stereomis dataset:
@@ -119,8 +119,8 @@ For Stereomis dataset:
 accelerate launch --config_file ./configs/accelerate-train.yaml \
     -m openlrm.launch train.lrm \
     --config ./configs/train-sample.yaml \
-    --no-freeze_endo_gaussian \
-    --gaussian_config /workspace/EndoLRM2/EndoGaussian/arguments/stereomis/stereomis.py
+    --no-freeze_gaussian \
+    --gaussian_config /workspace/EndoLRMGS/FMGaussianSplatting/arguments/stereomis/stereomis_2_6.py
 ```
 
 For Scared dataset:
@@ -128,8 +128,8 @@ For Scared dataset:
 accelerate launch --config_file ./configs/accelerate-train.yaml \
     -m openlrm.launch train.lrm \
     --config ./configs/train-sample.yaml \
-    --no-freeze_endo_gaussian \
-    --gaussian_config /workspace/EndoLRM2/EndoGaussian/arguments/scared/d6k4.py
+    --no-freeze_gaussian \
+    --gaussian_config /workspace/EndoLRMGS/FMGaussianSplatting/arguments/scared/d1k1.py
 ```
 
 ## Acknowledgements

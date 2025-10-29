@@ -23,9 +23,9 @@ def no_grad(func):
 
 @REGISTRY_RUNNERS.register('train.lrm')
 class LRMTrainer(Trainer):
-    def __init__(self, freeze_endo_gaussian=False, gaussian_config=None):
+    def __init__(self, freeze_gaussian=False, gaussian_config=None):
         super().__init__()
-        self.freeze_endo_gaussian = freeze_endo_gaussian
+        self.freeze_gaussian = freeze_gaussian
         self.gaussian_config = gaussian_config
 
         self.model = self._build_model(self.cfg)
@@ -99,8 +99,8 @@ class LRMTrainer(Trainer):
         # dataset class
         from openlrm.datasets import MixerDataset
 
-        if self.freeze_endo_gaussian:
-            # Only build datasets when freeze_endo_gaussian is True
+        if self.freeze_gaussian:
+            # Only build datasets when freeze_gaussian is True
             train_dataset = MixerDataset(
                 split="train",
                 subsets=cfg.dataset.subsets,
@@ -144,7 +144,7 @@ class LRMTrainer(Trainer):
                 persistent_workers=False,
             )
         else:
-            # Return dummy loaders when freeze_endo_gaussian is False
+            # Return dummy loaders when freeze_gaussian is False
             train_loader = torch.utils.data.DataLoader([], batch_size=1)
             val_loader = torch.utils.data.DataLoader([], batch_size=1)
 
@@ -202,7 +202,7 @@ class LRMTrainer(Trainer):
 
         return outputs, loss, loss_pixel, loss_perceptual, loss_tv
 
-    def train_endo_gaussian(self):
+    def train_FMGS_gaussian(self):
         # Import required modules and call training directly with config path
         from FMGaussianSplatting.train import training
         from argparse import ArgumentParser
@@ -214,13 +214,13 @@ class LRMTrainer(Trainer):
         training(parser, config_path=self.gaussian_config)
 
     def train_epoch(self, pbar: tqdm, loader: torch.utils.data.DataLoader, profiler: torch.profiler.profile):
-        if not self.freeze_endo_gaussian:
-            # Only train EndoGaussian when freeze_endo_gaussian is False
-            logger.info("Training EndoGaussian...")
-            self.train_endo_gaussian()
+        if not self.freeze_gaussian:
+            # Only train FMGS when freeze_gaussian is False
+            logger.info("Training train_FMGS_gaussian...")
+            self.train_FMGS_gaussian()
             return
 
-        # Regular LRM training when freeze_endo_gaussian is True
+        # Regular LRM training when freeze_gaussian is True
         logger.info("Training LRM...")
         self.model.train()
 
@@ -229,7 +229,7 @@ class LRMTrainer(Trainer):
 
         logger.debug(f"======== Starting epoch {self.current_epoch} ========")
 
-        # Regular LRM training when freeze_endo_gaussian is True
+        # Regular LRM training when freeze_gaussian is True
         for data in loader:
             logger.debug(f"======== Starting global step {self.global_step} ========")
             with self.accelerator.accumulate(self.model):
@@ -319,16 +319,16 @@ class LRMTrainer(Trainer):
         )
 
     def train(self):
-        if not self.freeze_endo_gaussian:
-            # When training EndoGaussian, skip dataloader setup and directly train
-            logger.info("Starting EndoGaussian training...")
+        if not self.freeze_gaussian:
+            # When training train_FMGS_gaussian, skip dataloader setup and directly train
+            logger.info("Starting train_FMGS_gaussian training...")
             with DummyProfiler() as profiler:
                 self.train_epoch(
                     pbar=tqdm(range(1)), 
                     loader=None,
                     profiler=profiler
                 )
-            logger.info("EndoGaussian training complete")
+            logger.info("train_FMGS_gaussian training complete")
             return
 
         # Regular LRM training path

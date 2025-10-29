@@ -1,18 +1,3 @@
-# Copyright (c) 2023-2024, Zexin He
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-
 import torch
 import os
 import argparse
@@ -22,13 +7,11 @@ import numpy as np
 from PIL import Image
 from omegaconf import OmegaConf
 from tqdm.auto import tqdm
-from datetime import datetime
 from pathlib import Path
 from accelerate.logging import get_logger
 from argparse import ArgumentParser
 import torchvision
 import cv2
-import open3d as o3d
 import time
 from collections import defaultdict
 
@@ -36,22 +19,25 @@ from .base_inferrer import Inferrer
 from openlrm.datasets.cam_utils import build_camera_principle, build_camera_standard, surrounding_views_linspace, create_intrinsics
 from openlrm.utils.logging import configure_logger
 from openlrm.runners import REGISTRY_RUNNERS
-# from openlrm.utils.video import images_to_video
 from openlrm.utils.hf_hub import wrap_model_hub
-from EndoGaussian.scene import Scene, GaussianModel
-from EndoGaussian.gaussian_renderer import render
-from EndoGaussian.arguments import ModelParams, PipelineParams, ModelHiddenParams
-# from ..gaussian_args import create_gaussian_args
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+from FMGaussianSplatting.scene import Scene, GaussianModel
+from FMGaussianSplatting.gaussian_renderer import render
+from FMGaussianSplatting.arguments import ModelParams, PipelineParams, ModelHiddenParams
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 logger = get_logger(__name__)
-
 
 def parse_configs():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str)
     parser.add_argument('--infer', type=str)
+    parser.add_argument('--model_name', type=str)
+    parser.add_argument('--image_input', type=str)
+    parser.add_argument('--export_video', type=bool, default=False)
+    parser.add_argument('--export_mesh', type=lambda x: x.lower() == 'true', default=True)
+    parser.add_argument('--gaussian_config', type=str)
     args, unknown = parser.parse_known_args()
 
     cfg = OmegaConf.create()
@@ -61,13 +47,13 @@ def parse_configs():
     if os.environ.get('APP_INFER') is not None:
         args.infer = os.environ.get('APP_INFER')
     if os.environ.get('APP_MODEL_NAME') is not None:
-        cli_cfg.model_name = os.environ.get('APP_MODEL_NAME')
+        args.model_name = os.environ.get('APP_MODEL_NAME')
 
     if args.config is not None:
         cfg_train = OmegaConf.load(args.config)
         cfg.source_size = cfg_train.dataset.source_image_res
         cfg.render_size = cfg_train.dataset.render_image.high
-        _relative_path = os.path.join(cfg_train.experiment.parent, cfg_train.experiment.child, os.path.basename(cli_cfg.model_name).split('_')[-1])
+        _relative_path = os.path.join(cfg_train.experiment.parent, cfg_train.experiment.child, os.path.basename(args.model_name).split('_')[-1])
         cfg.video_dump = os.path.join("exps", 'videos', _relative_path)
         cfg.mesh_dump = os.path.join("exps", 'meshes', _relative_path)
         cfg.rendered_dump = os.path.join("exps", 'rendered', _relative_path)
@@ -76,57 +62,42 @@ def parse_configs():
     if args.infer is not None:
         cfg_infer = OmegaConf.load(args.infer)
         cfg.merge_with(cfg_infer)
-        cfg.setdefault('video_dump', os.path.join(str(cfg_infer.save_path), cli_cfg.model_name, 'videos'))
-        cfg.setdefault('mesh_dump', os.path.join(str(cfg_infer.save_path), cli_cfg.model_name, 'meshes'))
-        cfg.setdefault('rendered_dump', os.path.join(str(cfg_infer.save_path), cli_cfg.model_name, 'rendered'))
-        cfg.setdefault('rendered_depth', os.path.join(str(cfg_infer.save_path), cli_cfg.model_name, 'rendered_depth'))
+        
+        cfg.setdefault('video_dump', os.path.join(str(cfg_infer.save_path), args.model_name, 'videos'))
+        cfg.setdefault('mesh_dump', os.path.join(str(cfg_infer.save_path), args.model_name, 'meshes'))
+        cfg.setdefault('rendered_dump', os.path.join(str(cfg_infer.save_path), args.model_name, 'rendered'))
+        cfg.setdefault('rendered_depth', os.path.join(str(cfg_infer.save_path), args.model_name, 'rendered_depth'))
+
+    # Set values from parsed args
+    if args.model_name is not None:
+        cfg.model_name = args.model_name
+    if args.image_input is not None:
+        cfg.image_input = args.image_input
+    if args.export_mesh is not None:
+        cfg.export_mesh = args.export_mesh
+    if args.export_video is not None:
+        cfg.export_video = args.export_video
 
     cfg.merge_with(cli_cfg)
 
-    """
-    [required]
-    model_name: str
-    image_input: str
-    export_video: bool
-    export_mesh: bool
-
-    [special]
-    source_size: int
-    render_size: int
-    video_dump: str
-    mesh_dump: str
-
-    [default]
-    render_views: int
-    render_fps: int
-    mesh_size: int
-    mesh_thres: float
-    frame_size: int
-    logger: str
-    """
-
     cfg.setdefault('logger', 'INFO')
 
-    # assert not (args.config is not None and args.infer is not None), "Only one of config and infer should be provided"
     assert cfg.model_name is not None, "model_name is required"
     if not os.environ.get('APP_ENABLED', None):
         assert cfg.image_input is not None, "image_input is required"
-        # assert cfg.export_video or cfg.export_mesh, \
-        #     "At least one of export_video or export_mesh should be True"
         cfg.app_enabled = False
     else:
         cfg.app_enabled = True
 
     return cfg
 
-
 @REGISTRY_RUNNERS.register('infer.lrm')
 class LRMInferrer(Inferrer):
 
     EXP_TYPE: str = 'lrm'
 
-    def __init__(self, freeze_endo_gaussian=True, gaussian_config=None):
-        super().__init__(freeze_endo_gaussian)
+    def __init__(self, freeze_gaussian=True, gaussian_config=None):
+        super().__init__(freeze_gaussian)
         self.gaussian_config = gaussian_config
         self.timing_stats = defaultdict(float)  # Add timing stats dictionary
         self.num_processed = 0  # Counter for processed images
@@ -137,19 +108,20 @@ class LRMInferrer(Inferrer):
             log_level=self.cfg.logger,
         )
         
-        # Initialize EndoGaussian components first
+        # Initialize FMGS components first
         self.scene = None
         self.gaussians = None
         self.pipe = None
         self.background = None
-        self._setup_endogaussian()
+        self._setup_fmgaussian()
+
         
         # Build LRM model
         self.model = self._build_model(self.cfg).to(self.device)
         logger.info("LRM model loaded and ready for inference")
 
-    def _setup_endogaussian(self):
-        """Initialize EndoGaussian model and components"""
+    def _setup_fmgaussian(self):
+        """Initialize FMGaussian model and components"""
         parser = ArgumentParser(description="Inference parameters")
         lp = ModelParams(parser, sentinel=True)
         pp = PipelineParams(parser)
@@ -178,10 +150,15 @@ class LRMInferrer(Inferrer):
         self.gaussians = GaussianModel(dataset.sh_degree, hyper)
         self.scene = Scene(dataset, self.gaussians, load_iteration=args.iterations)
 
-    def _get_endogaussian_render(self, idx):
-        """Get rendered image from EndoGaussian"""
+        self.kernel_size = lp._kernel_size
+
+
+    def _get_fmgaussian_render(self, idx):
+        """Get rendered image from FMGaussianSplatting"""
+        
         viewpoint_cam = self.scene.getVideoCameras()[idx]
-        render_pkg = render(viewpoint_cam, self.gaussians, self.pipe, self.background, stage="fine")
+        
+        render_pkg = render(viewpoint_cam, self.gaussians, self.pipe, self.background, kernel_size=self.kernel_size, stage="fine")
         
         rendered_image = render_pkg["render"]
         rendered_depth = render_pkg["depth"]
@@ -309,31 +286,28 @@ class LRMInferrer(Inferrer):
         
         return str(video_path), str(mesh_path), str(render_path), str(render_depth_path)
 
-    def infer_single(self, image_path: str, idx: int, source_cam_dist: float = None, 
-                    export_mesh: bool = True):
-        """Process single image with both LRM and EndoGaussian components"""
+    def infer_single(self, image_path: str, idx: int, source_cam_dist: float = None, export_mesh: bool = True):
+        """Process single image with both LRM and FMGaussian components"""
         try:
             total_start = time.time()
-            if self.model is None and (self.freeze_endo_gaussian or self.endo_gaussian_trained):
+            if self.model is None and (self.freeze_gaussian or self.gaussian_trained):
                 self.model = self._build_model(self.cfg).to(self.device)
             
             source_size = self.cfg.source_size
             mesh_size = self.cfg.mesh_size
             mesh_thres = self.cfg.mesh_thres
-            
             # Get all paths first
             video_path, mesh_path, render_path, render_depth_path = self._generate_output_paths(
                 image_path, os.path.dirname(image_path))
             
-            # Get EndoGaussian rendered results first (independent of masks)
+            # Get FMGaussianSplatting rendered results first (independent of masks)
             t0 = time.time()
-            rendered_image, rendered_depth = self._get_endogaussian_render(idx)
+            rendered_image, rendered_depth = self._get_fmgaussian_render(idx)
             self._save_rendered_outputs(rendered_image, rendered_depth, render_path, render_depth_path)
             endo_time = time.time() - t0
-            print(f"EndoGaussian time: {endo_time:.2f}s")
+            print(f"FMGaussianSplatting time: {endo_time:.4f}s")
             
             # Process input image and masks
-            
             images, masks, num_masks = self._load_and_process_image(image_path, source_size)
             
             # Process each mask separately
@@ -404,9 +378,8 @@ class LRMInferrer(Inferrer):
         return processed_images, processed_masks, len(mask_colors)
 
     def _save_rendered_outputs(self, rendered_image, rendered_depth, render_path, render_depth_path):
-        """Save EndoGaussian rendered outputs"""
+        """Save FMGaussianSplatting rendered outputs"""
         os.makedirs(os.path.dirname(render_path), exist_ok=True)
-        
         os.makedirs(os.path.dirname(render_depth_path), exist_ok=True)
         
         try:
@@ -442,7 +415,7 @@ class LRMInferrer(Inferrer):
                     str(p) for p in input_path.rglob("*.png")
                 ])
                 image_paths.sort()
-
+            
             # Distribute work across DDP workers
             image_paths = image_paths[self.accelerator.process_index::self.accelerator.num_processes]
             for idx, image_path in enumerate(tqdm(image_paths, disable=not self.accelerator.is_local_main_process)):

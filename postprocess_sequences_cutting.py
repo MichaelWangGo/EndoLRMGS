@@ -436,11 +436,11 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
 
 if __name__ == "__main__":
     # Define base directories
-    pcd_base_dir = "/workspace/EndoLRM2/endonerf/cutting/zxhezexin/openlrm-mix-base-1.1/meshes"
-    depth_base_dir = "/workspace/EndoLRM2/endonerf/cutting/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
+    pcd_base_dir = "/workspace/EndoLRMGS/endonerf/pulling/zxhezexin/openlrm-mix-base-1.1/meshes"
+    depth_base_dir = "/workspace/EndoLRMGS/endonerf/pulling/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
     mask_base_dir = "/workspace/dataset/endolrm_dataset/endonerf/cutting_tissues_twice/Annotations"
-    output_base_dir = "/workspace/EndoLRM2/deleteme"
-    
+    output_base_dir = "/workspace/EndoLRMGS/endonerf/cutting/zxhezexin"
+
     # Create output folder if it doesn't exist
     os.makedirs(output_base_dir, exist_ok=True)
     all_results = []

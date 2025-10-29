@@ -372,10 +372,10 @@ K1 = np.array([
 
 if __name__ == "__main__":
     # # Define base directories
-    pcd_base_dir = "/workspace/EndoLRM2/stereomis/zxhezexin/openlrm-mix-base-1.1/meshes2"
-    depth_base_dir = "/workspace/EndoLRM2/stereomis/zxhezexin/openlrm-mix-base-1.1/rendered_depth2"
+    pcd_base_dir = "/workspace/EndoLRMGS/stereomis/zxhezexin/openlrm-mix-base-1.1/meshes"
+    depth_base_dir = "/workspace/EndoLRMGS/stereomis/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
     mask_base_dir = "/workspace/dataset/endolrm_dataset/stereomis/Annotations2"
-    output_base_dir = "/workspace/EndoLRM2/stereomis/zxhezexin/openlrm-mix-base-1.1"
+    output_base_dir = "/workspace/EndoLRMGS/stereomis/zxhezexin"
     
     # Create output folder if it doesn't exist
     os.makedirs(output_base_dir, exist_ok=True)

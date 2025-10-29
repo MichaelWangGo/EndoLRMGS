@@ -402,11 +402,11 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
 
 if __name__ == "__main__":
     # Define base directories
-    pcd_base_dir = "/workspace/EndoLRM2/scared/zxhezexin/openlrm-mix-base-1.1/meshes"
-    depth_base_dir = "/workspace/EndoLRM2/scared/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
+    pcd_base_dir = "/workspace/EndoLRMGS/scared/zxhezexin/openlrm-mix-base-1.1/meshes"
+    depth_base_dir = "/workspace/EndoLRMGS/scared/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
     mask_base_dir = "/workspace/dataset/endolrm_dataset/scared/dataset_6/data/Annotations"
-    output_base_dir = "/workspace/EndoLRM2/scared/zxhezexin/openlrm-mix-base-1.1/final_tools"
-    
+    output_base_dir = "/workspace/EndoLRMGS/scared/zxhezexin"
+
     # Create output folder if it doesn't exist
     os.makedirs(output_base_dir, exist_ok=True)
     
