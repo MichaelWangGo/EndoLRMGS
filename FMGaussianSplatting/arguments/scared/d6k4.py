@@ -1,12 +1,12 @@
 ModelParams = dict(
     extra_mark = 'scared',
     no_fine=False,
-    init_pts=20_000
+    init_pts=30_000
 )
 
 OptimizationParams = dict(
     coarse_iterations = 1000,
-    iterations = 8000,
+    iterations = 4000,
     position_lr_init = 0.00016,
     position_lr_final = 0.0000016,
     position_lr_delay_mult = 0.01,

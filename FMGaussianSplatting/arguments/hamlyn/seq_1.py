@@ -1,10 +1,6 @@
 ModelParams = dict(
-    extra_mark = 'endonerf',
-    camera_extent = 10,
-    source_path = '/workspace/dataset/endolrm_dataset/endonerf/cutting_tissues_twice',
-    model_path = '/workspace/EndoLRMGS/exps/endonerf/cutting',
-    mode = 'binocular',
-    sh_degree = 3,
+    extra_mark = 'hamlyn',
+    camera_extent = 9
 )
 
 OptimizationParams = dict(
@@ -13,12 +9,12 @@ OptimizationParams = dict(
     deformation_lr_final = 0.0000016,
     deformation_lr_delay_mult = 0.01,
     grid_lr_init = 0.0016,
-    grid_lr_final = 0.000016,
+    grid_lr_final = 0.00016,
     iterations = 3000,
     percent_dense = 0.01,
-    opacity_reset_interval = 4000,
-    position_lr_max_steps = 4000,
-    # prune_interval = 3000
+    opacity_reset_interval = 5000,
+    position_lr_max_steps = 5000,
+    prune_interval = 5000
 )
 
 ModelHiddenParams = dict(
@@ -26,7 +22,8 @@ ModelHiddenParams = dict(
      'grid_dimensions': 2,
      'input_coordinate_dim': 4,
      'output_coordinate_dim': 64,
-     'resolution': [64, 64, 64, 100]
+     'resolution': [64, 64, 64, 100] # x2
+
     },
     multires = [1, 2, 4, 8],
     defor_depth = 0,

@@ -1,7 +1,7 @@
 ModelParams = dict(
     extra_mark = 'scared',
     no_fine=False,
-    init_pts=20_000
+    init_pts=30_000
 )
 
 OptimizationParams = dict(
