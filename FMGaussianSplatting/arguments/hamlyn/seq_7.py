@@ -1,10 +1,14 @@
 ModelParams = dict(
     extra_mark = 'hamlyn',
-    camera_extent = 8
+    camera_extent = 8,
+    source_path = '/workspace/dataset/hamlyn_seq7',
+    model_path = '/workspace/EndoLRMGS/exps/hamlyn_seq7',
+    mode = 'binocular',
+    sh_degree = 3,
 )
 
 OptimizationParams = dict(
-    coarse_iterations = 2000,
+    coarse_iterations = 1000,
     deformation_lr_init = 0.00016,
     deformation_lr_final = 0.0000016,
     deformation_lr_delay_mult = 0.01,

@@ -1,6 +1,10 @@
 ModelParams = dict(
     extra_mark = 'hamlyn',
-    camera_extent = 9
+    camera_extent = 9,
+    source_path = '/workspace/dataset/hamlyn_seq1',
+    model_path = '/workspace/EndoLRMGS/exps/hamlyn_seq1',
+    mode = 'binocular',
+    sh_degree = 3,
 )
 
 OptimizationParams = dict(
