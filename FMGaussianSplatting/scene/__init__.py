@@ -32,6 +32,9 @@ class Scene:
         elif os.path.exists(os.path.join(args.source_path, "frame_data.json")) and args.extra_mark == 'stereomis':
             scene_info = sceneLoadTypeCallbacks["stereomis"](args.source_path)
             print("Found frame_data.json and extra marks with stereomis")
+        elif os.path.exists(os.path.join(args.source_path, "poses_bounds.npy")) and args.extra_mark == 'hamlyn':
+            scene_info = sceneLoadTypeCallbacks["hamlyn"](args.source_path, mode=args.mode)
+            print("Found poses_bounds.py and extra marks with Hamlyn")
         elif os.path.exists(os.path.join(args.source_path, "point_cloud.obj")) or os.path.exists(os.path.join(args.source_path, "left_point_cloud.obj")):
             scene_info = sceneLoadTypeCallbacks["scared"](args.source_path, mode=args.mode, init_pts=args.init_pts)
             print("Found point_cloud.obj, assuming SCARED data!")
