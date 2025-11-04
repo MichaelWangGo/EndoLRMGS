@@ -1,4 +1,3 @@
-torch
 lpips
 omegaconf
 transformers

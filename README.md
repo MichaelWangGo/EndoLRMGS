@@ -23,11 +23,12 @@ cd EndoLRMGS
 conda create -n endolrmgs python=3.10
 conda activate endolrmgs
 
-# Install dependencies
+# Install dependencies, we implement the work in docker with cuda 12.1
+pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
 pip install -r requirements.txt
 cd FMGaussianSplatting
-pip install -e submodules/depth-diff-gaussian-rasterization
-pip install -e submodules/simple-knn
+pip install submodules/depth-diff-gaussian-rasterization
+pip install submodules/simple-knn
 cd ..
 ```
 
