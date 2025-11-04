@@ -68,7 +68,7 @@ val:
 
 saver:
     auto_resume: true
-    load_model: "/workspace/EndoLRMGS/checkpoints/mix-small/model.safetensors"
+    load_model: "./checkpoints/mix-small/model.safetensors"
     checkpoint_root: ./exps/checkpoints
     checkpoint_global_steps: 1000
     checkpoint_keep_level: 5

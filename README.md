@@ -93,7 +93,7 @@ python -m openlrm.launch infer.lrm \
 ```
 
 ### Training
-To access LRM pretrained model, please refer to https://huggingface.co/zxhezexin/openlrm-mix-base-1.1 and save the model in EndoLRMGS/checkpoint
+To access LRM pretrained model, please refer to https://huggingface.co/zxhezexin/openlrm-mix-base-1.1/tree/main and save the model in EndoLRMGS/checkpoint
 For EndoNerf pulling dataset:
 ```bash
 accelerate launch --config_file ./configs/accelerate-train.yaml \
