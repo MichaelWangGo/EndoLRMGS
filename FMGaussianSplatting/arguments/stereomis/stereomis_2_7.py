@@ -1,8 +1,8 @@
 ModelParams = dict(
     extra_mark = 'stereomis',
     camera_extent = 10,
-    source_path = '/workspace/dataset/endolrm_dataset/stereomis/p2_7',
-    model_path = '/workspace/EndoLRMGS/exps/stereomis/p2_7',
+    source_path = '/workspace/datasets/endolrm_dataset/stereomis/p2_7',
+    model_path = './exps/stereomis/p2_7',
     mode = 'binocular',
     sh_degree = 3,
 )

@@ -33,7 +33,7 @@ def load_and_resize_image(image_path, target_size=None):
 def load_mask(mask_path):
     # import ipdb; ipdb.set_trace()
     mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-    # mask = 255 - mask # add this if evaluate tissue; or comment this line if evaluate tools
+    mask = 255 - mask # add this if evaluate tissue; or comment this line if evaluate tools
     if mask is None:
         raise ValueError(f"Mask cannot be loaded: {mask_path}")
     return mask > 0
@@ -114,11 +114,11 @@ def load_depth_image(depth_path):
 # 主函数
 def main():
     # Define paths
-    rendered_dir = '/workspace/EndoLRM2/scared/zxhezexin/openlrm-mix-large-1.1/rendered'
-    gt_dir = '/workspace/dataset/endolrm_dataset/scared/dataset_6/data_processed/rgb_scale_1'
-    mask_dir = '/workspace/dataset/endolrm_dataset/scared/dataset_6/data_processed/mask_scale_1'
-    rendered_depth = '/workspace/EndoLRM2/scared/zxhezexin/openlrm-mix-large-1.1/rendered_depth'
-    gt_depth = '/workspace/Bidirectional-SemiSupervised-Dual-branch-CNN/scared_d6k4'
+    rendered_dir = '/workspace/EndoLRMGS/stereomis/zxhezexin/openlrm-mix-base-1.1/rendered'
+    gt_dir = '/workspace/datasets/endolrm_dataset/stereomis/p2_6/left_finalpass'
+    mask_dir = '/workspace/datasets/endolrm_dataset/stereomis/p2_6/binary_mask_deva'
+    rendered_depth = '/workspace/EndoLRMGS/stereomis/zxhezexin/openlrm-mix-base-1.1/rendered_depth'
+    gt_depth = '/workspace/datasets/endolrm_dataset/stereomis/p2_6/depth'
     
     rendered_files = sorted([f for f in os.listdir(rendered_dir) 
                            if f.endswith(('.png', '.jpg', '.jpeg'))])
@@ -164,8 +164,8 @@ def main():
 
             # Load and evaluate depth images
             if os.path.exists(rendered_depth_path) and os.path.exists(gt_depth_path):
-                rendered_depth_img = load_depth_image(rendered_depth_path)*3
-                gt_depth_img = load_depth_image(gt_depth_path) / 256
+                rendered_depth_img = load_depth_image(rendered_depth_path)
+                gt_depth_img = load_depth_image(gt_depth_path) / 255
                 # import ipdb; ipdb.set_trace()
                 depth_rmse = cal_rmse(rendered_depth_img, gt_depth_img, mask)
                 total_depth_rmse += depth_rmse

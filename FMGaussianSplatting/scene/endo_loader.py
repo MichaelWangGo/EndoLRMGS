@@ -1050,22 +1050,26 @@ class Stereomis_Dataset(object):
         poses_file = os.path.join(self.root_dir, "camera_poses.txt")
         pose_data = {}
         
-        with open(poses_file, 'r') as f:
-            for line in f:
-                parts = line.strip().split()
-                if len(parts) >= 17:  # filename + 16 pose values
-                    frame_name = parts[0]
-                    # Extract 4x4 pose matrix from the line (elements 1-16)
-                    pose_values = [float(x) for x in parts[1:17]]
-                    pose_matrix = np.array(pose_values).reshape(4, 4)
-                    pose_data[frame_name] = pose_matrix
-                elif len(parts) == 16:  # Handle case with no filename
-                    # Use a default name or index if no filename is provided
-                    frame_name = f"frame_{len(pose_data)}.png"
-                    pose_values = [float(x) for x in parts]
-                    pose_matrix = np.array(pose_values).reshape(4, 4)
-                    pose_data[frame_name] = pose_matrix
-        
+        # Check if poses file exists
+        if os.path.exists(poses_file):
+            with open(poses_file, 'r') as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) >= 17:  # filename + 16 pose values
+                        frame_name = parts[0]
+                        # Extract 4x4 pose matrix from the line (elements 1-16)
+                        pose_values = [float(x) for x in parts[1:17]]
+                        pose_matrix = np.array(pose_values).reshape(4, 4)
+                        pose_data[frame_name] = pose_matrix
+                    elif len(parts) == 16:  # Handle case with no filename
+                        # Use a default name or index if no filename is provided
+                        frame_name = f"frame_{len(pose_data)}.png"
+                        pose_values = [float(x) for x in parts]
+                        pose_matrix = np.array(pose_values).reshape(4, 4)
+                        pose_data[frame_name] = pose_matrix
+        else:
+            print(f"Warning: Camera poses file not found at {poses_file}, using identity poses")
+                
         # Prepare poses - match image paths with pose data
         self.image_poses = []
         self.image_times = []
@@ -1101,7 +1105,6 @@ class Stereomis_Dataset(object):
             
         # Verify data consistency
         assert len(self.image_paths) == len(self.depth_paths), "Number of images and depth maps must match"
-        # assert len(self.image_paths) == len(self.masks_paths), "Number of images and masks must match"
 
     def format_infos(self, split):
         cameras = []
@@ -1112,8 +1115,6 @@ class Stereomis_Dataset(object):
             idxs = self.video_idxs
         
         for idx in tqdm(idxs):
-            # import ipdb; ipdb.set_trace()
-            # mask / depth
             if self.masks_paths is not None:
                 mask_path = self.masks_paths[idx]
                 mask = np.array(Image.open(mask_path))/255.0
@@ -1121,7 +1122,6 @@ class Stereomis_Dataset(object):
                 mask = cv2.dilate(mask, kernel, iterations=1)
                 mask = 1 - mask
             else:
-                # import ipdb; ipdb.set_trace()
                 mask = np.ones((1024,1280), dtype=np.float32)  # No mask available, use full image
 
 
@@ -1228,190 +1228,3 @@ class Stereomis_Dataset(object):
         
     def get_maxtime(self):
         return self.maxtime
-
-# class Stereomis_Dataset(object):
-#     def __init__(
-#         self,
-#         datadir,
-#         downsample=1.0,
-#         test_every=8
-#     ):
-#         self.img_wh = (
-#             int(1280 / downsample),  # Adjusted for stereomis resolution
-#             int(1024 / downsample),
-#         )
-#         self.root_dir = datadir
-#         self.downsample = downsample 
-#         self.transform = T.ToTensor()
-#         self.white_bg = False
-
-
-#         self.load_meta()
-#         print(f"meta data loaded, total image:{len(self.image_paths)}")
-        
-#         n_frames = len(self.image_paths)
-#         self.train_idxs = [i for i in range(n_frames) if (i-1) % test_every != 0]
-#         self.test_idxs = [i for i in range(n_frames) if (i-1) % test_every == 0]
-#         self.video_idxs = [i for i in range(n_frames)]
-        
-#         self.maxtime = 1.0
-        
-#     def load_meta(self):
-#         """Load meta data from the dataset"""
-#         # Load poses and camera parameters from frame_data.json
-#         with open(os.path.join(self.root_dir, "frame_data.json"), 'r') as f:
-#             calib_data = json.load(f)
-        
-#         # Get camera matrix
-#         K = np.array(calib_data['camera-calibration']['KL'])
-#         self.focal = (K[0, 0], K[1, 1])
-#         self.K = K
-
-#         # Get paths
-#         self.image_paths = sorted(glob.glob(os.path.join(self.root_dir, "left_finalpass", "*.png")))
-#         self.depth_paths = sorted(glob.glob(os.path.join(self.root_dir, "depth", "*.png")))
-#         self.masks_paths = sorted(glob.glob(os.path.join(self.root_dir, "binary_mask_deva", "*.png")))
-        
-#         # Prepare poses - using similar format as EndoNeRF
-#         self.image_poses = []
-#         self.image_times = []
-#         n_frames = len(self.image_paths)
-        
-#         # Convert camera pose from frame_data.json
-#         base_pose = np.array(calib_data['camera-pose'])
-        
-#         for idx in range(n_frames):
-#             # Create pose matrix similar to EndoNeRF format
-#             c2w = np.copy(base_pose)
-#             if idx == 0:
-#                 c2w0 = c2w
-#             c2w = np.linalg.inv(c2w0) @ c2w  # Make first frame as reference
-            
-#             w2c = np.linalg.inv(c2w)
-#             R = w2c[:3, :3]
-#             T = w2c[:3, -1]
-#             R = np.transpose(R)
-            
-#             self.image_poses.append((R, T))
-#             self.image_times.append(idx / n_frames)
-            
-#         # Verify data consistency
-#         assert len(self.image_paths) == len(self.depth_paths), "Number of images and depth maps must match"
-#         assert len(self.image_paths) == len(self.masks_paths), "Number of images and masks must match"
-
-#     def format_infos(self, split):
-#         cameras = []
-        
-#         if split == 'train': idxs = self.train_idxs
-#         elif split == 'test': idxs = self.test_idxs
-#         else:
-#             idxs = self.video_idxs
-        
-#         for idx in tqdm(idxs):
-#             # mask / depth
-            
-#             mask_path = self.masks_paths[idx]
-#             mask = np.array(Image.open(mask_path))/255.0
-#             kernel = np.ones((47, 47), np.uint8)
-#             mask = cv2.dilate(mask, kernel, iterations=1)
-#             mask = 1 - mask
-
-#             depth_path = self.depth_paths[idx]
-#             depth = np.array(Image.open(depth_path))/255
-#             close_depth = np.percentile(depth[depth!=0], 3.0)
-#             inf_depth = np.percentile(depth[depth!=0], 99.8)
-#             depth = np.clip(depth, close_depth, inf_depth)
-           
-#             depth = torch.from_numpy(depth)
-#             mask = self.transform(mask).bool()
-#             # color
-#             color = np.array(Image.open(self.image_paths[idx]))/255.0
-#             image = self.transform(color)
-#             # times           
-#             time = self.image_times[idx]
-#             # poses
-#             R, T = self.image_poses[idx]
-#             # fov
-#             FovX = focal2fov(self.focal[0], self.img_wh[0])
-#             FovY = focal2fov(self.focal[1], self.img_wh[1])
-            
-#             cameras.append(Camera(colmap_id=idx,R=R,T=T,FoVx=FovX,FoVy=FovY,image=image, depth=depth, mask=mask, gt_alpha_mask=None,
-#                           image_name=f"{idx}",uid=idx,data_device=torch.device("cuda"),time=time,
-#                           Znear=None, Zfar=None))
-#         return cameras
-    
-#     def get_init_pts(self, sampling='random'):
-
-#         pts_total, colors_total = [], []
-#         for idx in self.train_idxs:
-#             color, depth, mask = self.get_color_depth_mask(idx)
-#             pts, colors, _ = self.get_pts_cam(depth, mask, color, disable_mask=False)
-#             pts = self.get_pts_wld(pts, self.image_poses[idx])
-#             num_pts = pts.shape[0]
-#             if sampling == 'fps':
-#                 sel_idxs = fpsample.bucket_fps_kdline_sampling(pts, int(0.01*num_pts), h=3)
-#             elif sampling == 'random':
-#                 sel_idxs = np.random.choice(num_pts, int(0.01*num_pts), replace=False)
-#             else:
-#                 raise ValueError(f'{sampling} sampling has not been implemented yet.')
-#             pts_sel, colors_sel = pts[sel_idxs], colors[sel_idxs]
-#             pts_total.append(pts_sel)
-#             colors_total.append(colors_sel)
-#         pts_total = np.concatenate(pts_total)
-#         colors_total = np.concatenate(colors_total)
-#         sel_idxs = np.random.choice(pts_total.shape[0], 30_000, replace=True)
-#         pts, colors = pts_total[sel_idxs], colors_total[sel_idxs]
-#         normals = np.zeros((pts.shape[0], 3))
-
-#         return pts, colors, normals
-        
-#     def get_pts_wld(self, pts, pose):
-#         R, T = pose
-#         R = np.transpose(R)
-#         w2c = np.concatenate((R, T[...,None]), axis=-1)
-#         w2c = np.concatenate((w2c, np.array([[0, 0, 0, 1]])), axis=0)
-#         c2w = np.linalg.inv(w2c)
-#         pts_cam_homo = np.concatenate((pts, np.ones((pts.shape[0], 1))), axis=-1)
-#         pts_wld = np.transpose(c2w @ np.transpose(pts_cam_homo))
-#         pts_wld = pts_wld[:, :3]
-#         return pts_wld
-    
-#     def get_color_depth_mask(self, idx):
-
-#         depth = np.array(Image.open(self.depth_paths[idx]))/255
-#         close_depth = np.percentile(depth[depth!=0], 3.0)
-#         inf_depth = np.percentile(depth[depth!=0], 99.8)
-#         depth = np.clip(depth, close_depth, inf_depth)
-        
-#         mask = np.array(Image.open(self.masks_paths[idx]))/255
-#         kernel = np.ones((47, 47), np.uint8)
-#         mask = cv2.dilate(mask, kernel, iterations=1)
-#         mask = 1 - mask
-        
-#         color = np.array(Image.open(self.image_paths[idx]))/255.0
-#         return color, depth, mask
-             
-#     def get_pts_cam(self, depth, mask, color, disable_mask=False):
-#         W, H = self.img_wh
-#         i, j = np.meshgrid(np.linspace(0, W-1, W), np.linspace(0, H-1, H))
-#         X_Z = (i-W/2) / self.focal[0]
-#         Y_Z = (j-H/2) / self.focal[1]
-#         Z = depth
-#         X, Y = X_Z * Z, Y_Z * Z
-#         pts_cam = np.stack((X, Y, Z), axis=-1).reshape(-1, 3)
-#         color = color.reshape(-1, 3)
-        
-#         if not disable_mask:
-#             mask = mask.reshape(-1).astype(bool)
-#             pts_valid = pts_cam[mask, :]
-#             color_valid = color[mask, :]
-#         else:
-#             mask = mask.reshape(-1).astype(bool)
-#             pts_valid = pts_cam
-#             color_valid = color
-#             color_valid[mask==0, :] = np.ones(3)
-                    
-#         return pts_valid, color_valid, mask
-        
-#     def get_maxtime(self):
-#         return self.maxtime

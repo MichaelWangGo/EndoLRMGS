@@ -1,8 +1,8 @@
 ModelParams = dict(
     extra_mark = 'stereomis',
     camera_extent = 10,
-    source_path = '/workspace/dataset/endolrm_dataset/stereomis/p2_6',
-    model_path = '/workspace/EndoLRMGS/exps/stereomis/p2_6',
+    source_path = '/workspace/datasets/endolrm_dataset/stereomis/p2_6',
+    model_path = './exps/stereomis/p2_6',
     mode = 'binocular',
     sh_degree = 3,
 )
@@ -14,7 +14,7 @@ OptimizationParams = dict(
     deformation_lr_delay_mult = 0.01,
     grid_lr_init = 0.0016,
     grid_lr_final = 0.000016,
-    iterations = 4000,
+    iterations = 3000,
     percent_dense = 0.01,
     opacity_reset_interval = 4000,
     position_lr_max_steps = 4000,
