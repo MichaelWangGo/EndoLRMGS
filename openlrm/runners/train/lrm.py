@@ -216,7 +216,7 @@ class LRMTrainer(Trainer):
     def train_epoch(self, pbar: tqdm, loader: torch.utils.data.DataLoader, profiler: torch.profiler.profile):
         if not self.freeze_gaussian:
             # Only train FMGS when freeze_gaussian is False
-            logger.info("Training train_FMGS_gaussian...")
+            logger.info("Training FMGS...")
             self.train_FMGS_gaussian()
             return
 
@@ -320,15 +320,15 @@ class LRMTrainer(Trainer):
 
     def train(self):
         if not self.freeze_gaussian:
-            # When training train_FMGS_gaussian, skip dataloader setup and directly train
-            logger.info("Starting train_FMGS_gaussian training...")
+            # When training FMGS_gaussian, skip dataloader setup and directly train
+            logger.info("Starting FMGS training...")
             with DummyProfiler() as profiler:
                 self.train_epoch(
                     pbar=tqdm(range(1)), 
                     loader=None,
                     profiler=profiler
                 )
-            logger.info("train_FMGS_gaussian training complete")
+            logger.info("FMGS training complete")
             return
 
         # Regular LRM training path

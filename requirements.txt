@@ -16,3 +16,5 @@ mmcv==1.6.0
 argparse
 imageio
 open3d
+plyfile
+fpsample

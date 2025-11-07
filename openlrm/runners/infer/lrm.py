@@ -24,6 +24,8 @@ from FMGaussianSplatting.scene import Scene, GaussianModel
 from FMGaussianSplatting.gaussian_renderer import render
 from FMGaussianSplatting.arguments import ModelParams, PipelineParams, ModelHiddenParams
 
+import psutil
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 logger = get_logger(__name__)
@@ -107,7 +109,10 @@ class LRMInferrer(Inferrer):
             stream_level=self.cfg.logger,
             log_level=self.cfg.logger,
         )
-        
+        cpu_count = psutil.cpu_count()
+        print("cpu_count:",cpu_count)
+        cpu_list = list(range(cpu_count))[1:2]
+        psutil.Process().cpu_affinity(cpu_list)
         # Initialize FMGS components first
         self.scene = None
         self.gaussians = None
@@ -115,7 +120,6 @@ class LRMInferrer(Inferrer):
         self.background = None
         self._setup_fmgaussian()
 
-        
         # Build LRM model
         self.model = self._build_model(self.cfg).to(self.device)
         logger.info("LRM model loaded and ready for inference")
@@ -155,11 +159,12 @@ class LRMInferrer(Inferrer):
 
     def _get_fmgaussian_render(self, idx):
         """Get rendered image from FMGaussianSplatting"""
-        
+
         viewpoint_cam = self.scene.getVideoCameras()[idx]
-        
+        start_time = time.perf_counter()
         render_pkg = render(viewpoint_cam, self.gaussians, self.pipe, self.background, kernel_size=self.kernel_size, stage="fine")
-        
+        end_time = time.perf_counter()
+        print(f"FMGaussianSplatting render time: {end_time - start_time:.4f}s")
         rendered_image = render_pkg["render"]
         rendered_depth = render_pkg["depth"]
         rendered_depth = torch.clamp(rendered_depth, 0, 255).cpu()
@@ -301,11 +306,8 @@ class LRMInferrer(Inferrer):
                 image_path, os.path.dirname(image_path))
             
             # Get FMGaussianSplatting rendered results first (independent of masks)
-            t0 = time.time()
             rendered_image, rendered_depth = self._get_fmgaussian_render(idx)
             self._save_rendered_outputs(rendered_image, rendered_depth, render_path, render_depth_path)
-            endo_time = time.time() - t0
-            print(f"FMGaussianSplatting time: {endo_time:.4f}s")
             
             # Process input image and masks
             images, masks, num_masks = self._load_and_process_image(image_path, source_size)
@@ -338,9 +340,20 @@ class LRMInferrer(Inferrer):
         else:
             mask_path = image_path.replace('images', 'Annotations')
 
-        image = torch.from_numpy(np.array(Image.open(image_path))).float().to(self.device)
-        mask_rgb = torch.from_numpy(np.array(Image.open(mask_path))).float().to(self.device)
-        
+        # image = torch.from_numpy(np.array(Image.open(image_path))).float().to(self.device)
+        # mask_rgb = torch.from_numpy(np.array(Image.open(mask_path))).float().to(self.device)
+
+        # Check if mask file exists
+        if not os.path.exists(mask_path):
+            logger.warning(f"Mask not found at {mask_path}, using full image without masking")
+            # Create a white mask (all ones) for the entire image
+            image = torch.from_numpy(np.array(Image.open(image_path))).float().to(self.device)
+            H, W = image.shape[:2]
+            mask_rgb = torch.ones((H, W, 3), dtype=torch.float32, device=self.device) * 255
+        else:
+            image = torch.from_numpy(np.array(Image.open(image_path))).float().to(self.device)
+            mask_rgb = torch.from_numpy(np.array(Image.open(mask_path))).float().to(self.device)
+
         # Process RGB mask to separate binary masks
         # Convert to (H,W,3) if not already
         if len(mask_rgb.shape) == 2:

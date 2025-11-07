@@ -113,7 +113,6 @@ def process_masked_region(mask, depth, K):
     return pcd, points_3d
 
 
-
 def get_pointcloud_pairs(pcd_dir):
     """Get all pairs of point clouds from directory"""
     # Define possible patterns for mask0 files
@@ -374,8 +373,8 @@ if __name__ == "__main__":
     # # Define base directories
     pcd_base_dir = "/workspace/EndoLRMGS/stereomis/zxhezexin/openlrm-mix-base-1.1/meshes"
     depth_base_dir = "/workspace/EndoLRMGS/stereomis/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
-    mask_base_dir = "/workspace/dataset/endolrm_dataset/stereomis/Annotations2"
-    output_base_dir = "/workspace/EndoLRMGS/stereomis/zxhezexin"
+    mask_base_dir = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/Annotations"
+    output_base_dir = "/workspace/EndoLRMGS/stereomis/zxhezexin/ablation_study/base"
     
     # Create output folder if it doesn't exist
     os.makedirs(output_base_dir, exist_ok=True)
