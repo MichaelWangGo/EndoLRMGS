@@ -345,8 +345,6 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
     
     return transformed_pcds, initial_iou_scores, final_iou_scores  # Return IoU scores along with transformed point clouds
 
-
-
 # Define camera matrices and parameters
 T_source = np.array([
     [1, 0, 0, 0],
@@ -363,8 +361,8 @@ T_target = np.array([
 ])
 
 K1 = np.array([
-    [1086.974365234375, 0.0, 586.080322265625],
-    [0.0, 1086.768310546875, 512.4758911132812],
+    [1033.894287109375, 0.0, 604.578857421875],
+    [0.0, 1033.7147216796875, 514.9761962890625],
     [0.0, 0.0, 1.0]
 ])
 
@@ -374,7 +372,9 @@ if __name__ == "__main__":
     pcd_base_dir = "/workspace/EndoLRMGS/stereomis/zxhezexin/openlrm-mix-base-1.1/meshes"
     depth_base_dir = "/workspace/EndoLRMGS/stereomis/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
     mask_base_dir = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/Annotations"
-    output_base_dir = "/workspace/EndoLRMGS/stereomis/zxhezexin/ablation_study/base"
+    calib_file = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/frame_data.json"
+    output_base_dir = "/workspace/EndoLRMGS/stereomis/zxhezexin/ablation_study/base/postprocessed_tools"
+
     
     # Create output folder if it doesn't exist
     os.makedirs(output_base_dir, exist_ok=True)
@@ -416,4 +416,3 @@ if __name__ == "__main__":
     print(f"IoU scores saved to: {csv_path}")
     
     print("Processing complete. Final point clouds saved to:", output_base_dir)
-
