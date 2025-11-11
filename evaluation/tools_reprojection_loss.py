@@ -8,10 +8,7 @@ from skimage.metrics import peak_signal_noise_ratio as psnr
 from skimage.metrics import structural_similarity as ssim
 import lpips
 import torch
-import torch.nn.functional as F
-from math import exp
 import json
-import lpips
 import pandas as pd
 
 
@@ -376,8 +373,8 @@ def main():
     results_df.to_csv(csv_path, index=False)
     print(f"\nMetrics saved to: {csv_path}")
     print(f"\nAverage Metrics:")
-    print(f"Left  - IoU: {results_df['left_iou'].mean():.4f}, PSNR: {results_df['left_psnr'].mean():.2f}, SSIM: {results_df['left_ssim'].mean():.4f}, LPIPS: {results_df['left_lpips'].mean():.4f}")
-    print(f"Right - IoU: {results_df['right_iou'].mean():.4f}, PSNR: {results_df['right_psnr'].mean():.2f}, SSIM: {results_df['right_ssim'].mean():.4f}, LPIPS: {results_df['right_lpips'].mean():.4f}")
+    print(f"Left  - IoU: {results_df['left_iou'].mean():.4f}, PSNR: {results_df['left_psnr'].mean():.4f}, SSIM: {results_df['left_ssim'].mean():.4f}, LPIPS: {results_df['left_lpips'].mean():.4f}")
+    print(f"Right - IoU: {results_df['right_iou'].mean():.4f}, PSNR: {results_df['right_psnr'].mean():.4f}, SSIM: {results_df['right_ssim'].mean():.4f}, LPIPS: {results_df['right_lpips'].mean():.4f}")
 
 if __name__ == "__main__":
     main()
