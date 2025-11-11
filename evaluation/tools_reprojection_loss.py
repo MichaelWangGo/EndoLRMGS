@@ -4,72 +4,16 @@ import json
 import open3d as o3d
 from pathlib import Path
 from tqdm import tqdm
-from torch.autograd import Variable
+from skimage.metrics import peak_signal_noise_ratio as psnr
+from skimage.metrics import structural_similarity as ssim
+import lpips
 import torch
 import torch.nn.functional as F
 from math import exp
 import json
 import lpips
+import pandas as pd
 
-
-@torch.no_grad()
-def psnr(img1, img2, mask=None):
-    if mask is None:
-        mse_mask = (((img1 - img2)) ** 2).view(img1.shape[0], -1).mean(1, keepdim=True)
-    else:
-        if mask.shape[1] == 3:
-            mse_mask = (((img1-img2)**2)*mask).sum() / ((mask.sum()+1e-10))
-        else:
-            mse_mask = (((img1-img2)**2)*mask).sum() / ((mask.sum()+1e-10)*3.0)
-
-    return 20 * torch.log10(1.0 / torch.sqrt(mse_mask))
-
-def lpips_loss(img1, img2, lpips_model):
-    loss = lpips_model(img1,img2)
-    return loss.mean()
-
-
-def gaussian(window_size, sigma):
-    gauss = torch.Tensor([exp(-(x - window_size // 2) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)])
-    return gauss / gauss.sum()
-
-def create_window(window_size, channel):
-    _1D_window = gaussian(window_size, 1.5).unsqueeze(1)
-    _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)
-    window = Variable(_2D_window.expand(channel, 1, window_size, window_size).contiguous())
-    return window
-
-def ssim(img1, img2, window_size=11, size_average=True):
-    channel = img1.size(-3)
-    window = create_window(window_size, channel)
-
-    if img1.is_cuda:
-        window = window.cuda(img1.get_device())
-    window = window.type_as(img1)
-
-    return _ssim(img1, img2, window, window_size, channel, size_average)
-
-def _ssim(img1, img2, window, window_size, channel, size_average=True):
-    mu1 = F.conv2d(img1, window, padding=window_size // 2, groups=channel)
-    mu2 = F.conv2d(img2, window, padding=window_size // 2, groups=channel)
-
-    mu1_sq = mu1.pow(2)
-    mu2_sq = mu2.pow(2)
-    mu1_mu2 = mu1 * mu2
-
-    sigma1_sq = F.conv2d(img1 * img1, window, padding=window_size // 2, groups=channel) - mu1_sq
-    sigma2_sq = F.conv2d(img2 * img2, window, padding=window_size // 2, groups=channel) - mu2_sq
-    sigma12 = F.conv2d(img1 * img2, window, padding=window_size // 2, groups=channel) - mu1_mu2
-
-    C1 = 0.01 ** 2
-    C2 = 0.03 ** 2
-
-    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
-
-    if size_average:
-        return ssim_map.mean()
-    else:
-        return ssim_map.mean(1).mean(1).mean(1)
 
 def load_calibration_frame_json(frame_json_path, image_size_hw):
     """Load original stereo calibration and compute rectified right intrinsics/extrinsics (alpha = -1).
@@ -127,11 +71,62 @@ def load_calibration_frame_json(frame_json_path, image_size_hw):
     
     return KL_orig, KL_rect, P2.astype(np.float32), R_left_rect, R_right, T_right
 
+def calculate_iou(projection_mask, gt_mask):
+    """Calculate IoU between projection mask and ground truth mask
+    
+    Args:
+        projection_mask: Binary mask (H, W), bool or uint8
+        gt_mask: Binary mask (H, W), bool or uint8
+    
+    Returns:
+        iou: float, IoU score
+    """
+    proj_binary = projection_mask.astype(bool) if projection_mask.dtype != bool else projection_mask
+    gt_binary = gt_mask.astype(bool) if gt_mask.dtype != bool else gt_mask
+    
+    intersection = np.sum(proj_binary & gt_binary)
+    union = np.sum(proj_binary | gt_binary)
+    
+    iou = intersection / union if union > 0 else 0.0
+    return iou
+
+def create_color_visualization(projection_mask, gt_mask, output_path):
+    """Create color-coded visualization of projection vs ground truth
+    
+    Args:
+        projection_mask: Binary mask (H, W), bool or uint8
+        gt_mask: Binary mask (H, W), bool or uint8  
+        output_path: Path to save visualization
+    
+    Color coding:
+        Blue: Ground truth only
+        Green: Projection only
+        Cyan: Overlap (both GT and projection)
+    """
+    h, w = gt_mask.shape
+    vis = np.zeros((h, w, 3), dtype=np.uint8)
+    
+    proj_binary = projection_mask.astype(bool)
+    gt_binary = gt_mask.astype(bool)
+    
+    # Blue: GT only
+    vis[gt_binary] = [0, 0, 255]
+    # Green: Projection only  
+    vis[proj_binary] = [0, 255, 0]
+    # Cyan: Overlap
+    vis[gt_binary & proj_binary] = [0, 255, 255]
+    
+    cv2.imwrite(str(output_path), cv2.cvtColor(vis, cv2.COLOR_RGB2BGR))
+
 def project_pointcloud_generic(point_cloud_path, K_or_P, image_size, R_rel=None, T_rel=None, output_path=None, interpolate=False, flip_z=False, use_projection_matrix=False, inpaint_near_points=False, near_dist_thresh=6):
     """Project point cloud into target view.
     
     Args:
         use_projection_matrix: If True, K_or_P is a 3x4 projection matrix; otherwise 3x3 intrinsic matrix
+        
+    Returns:
+        img: Rendered image
+        projection_mask: Binary mask of projected pixels (before inpainting)
     """
     pcd = o3d.io.read_point_cloud(str(point_cloud_path))
     points = np.asarray(pcd.points)
@@ -183,11 +178,17 @@ def project_pointcloud_generic(point_cloud_path, K_or_P, image_size, R_rel=None,
     px = uv.astype(int)
     cols = (colors * 255).astype(np.uint8)
 
+    # Create projection mask before inpainting
+    projection_mask = np.zeros((h, w), dtype=bool)
+    
     for (x, y), c, d in zip(px, cols, depths):
         if d < depth_buffer[y, x]:
             img[y, x] = c
             depth_buffer[y, x] = d
+            projection_mask[y, x] = True
 
+    # Dilate projection mask slightly to match postprocess approach
+    projection_mask = cv2.dilate(projection_mask.astype(np.uint8), np.ones((3,3), np.uint8)).astype(bool)
 
     if interpolate:
         # Hole = no projection (depth_buffer == inf)
@@ -195,8 +196,6 @@ def project_pointcloud_generic(point_cloud_path, K_or_P, image_size, R_rel=None,
         if hole_mask.any():
             if inpaint_near_points:
                 # Distance (in pixels) from each hole to nearest valid pixel
-                # distanceTransform expects 8-bit single channel: non-zero=foreground.
-                # We give hole_mask to get distance inside holes.
                 hole_uint8 = hole_mask.astype(np.uint8)
                 dist_map = cv2.distanceTransform(hole_uint8, cv2.DIST_L2, 3)
                 local_holes = (hole_mask & (dist_map <= near_dist_thresh))
@@ -210,46 +209,32 @@ def project_pointcloud_generic(point_cloud_path, K_or_P, image_size, R_rel=None,
 
     if output_path:
         cv2.imwrite(output_path, cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
-    return img
+    
+    return img, projection_mask
 
-def compute_metrics_in_mask(pred_img, gt_img, mask, lpips_model):
-    """Compute PSNR, SSIM, and LPIPS in masked region
+def calculate_masked_metrics(image1, image2, mask, lpips_model=lpips.LPIPS(net='alex').cuda()):
+    # Apply mask to both images
+    masked_image1 = image1.copy()
+    masked_image2 = image2.copy()
+    # import ipdb; ipdb.set_trace()
+    # Set masked areas to 0
+    masked_image1 = masked_image1 * mask[:, :, np.newaxis]
+    masked_image2 = masked_image2 * mask[:, :, np.newaxis]
+    # masked_image2[~mask] = 0
+    cv2.imwrite('masked_image1.png', masked_image1)
+    # Calculate metrics only on unmasked areas
+    psnr_value = psnr(masked_image1, masked_image2)
     
-    Args:
-        pred_img: RGB image as numpy array (H, W, 3), float32, range [0, 255]
-        gt_img: RGB image as numpy array (H, W, 3), float32, range [0, 255]
-        mask: Binary mask as numpy array (H, W), bool
-        lpips_model: Preloaded LPIPS model
-    """
-    if mask.sum() == 0:
-        return None, None, None
+    gray1 = cv2.cvtColor(masked_image1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(masked_image2, cv2.COLOR_BGR2GRAY)
+    ssim_value = ssim(gray1, gray2)
     
-    # Convert to torch tensors (1, 3, H, W), normalize to [0, 1]
-    # Ensure input is uint8 for tf.to_tensor
-    pred_tensor = torch.from_numpy(pred_img.astype(np.uint8)).permute(2, 0, 1).unsqueeze(0).float() / 255.0
-    gt_tensor = torch.from_numpy(gt_img.astype(np.uint8)).permute(2, 0, 1).unsqueeze(0).float() / 255.0
-    mask_tensor = torch.from_numpy(mask).unsqueeze(0).unsqueeze(0).float()
+    # For LPIPS, we need to handle the mask differently
+    image1_tensor = lpips.im2tensor(masked_image1).cuda()
+    image2_tensor = lpips.im2tensor(masked_image2).cuda()
+    lpips_value = lpips_model(image1_tensor, image2_tensor).item()
     
-    # Move to CUDA if available
-    if torch.cuda.is_available():
-        pred_tensor = pred_tensor.cuda()
-        gt_tensor = gt_tensor.cuda()
-        mask_tensor = mask_tensor.cuda()
-    
-    # PSNR - computed on masked region
-    psnr_val = psnr(pred_tensor, gt_tensor, mask_tensor)
-    
-    # SSIM - computed on full image
-    ssim_val = ssim(pred_tensor, gt_tensor)
-    
-    # LPIPS - normalize to [-1, 1] for LPIPS
-    pred_normalized = pred_tensor * 2.0 - 1.0
-    gt_normalized = gt_tensor * 2.0 - 1.0
-    
-    with torch.no_grad():
-        lpips_val = lpips_loss(pred_normalized, gt_normalized, lpips_model)
-    
-    return psnr_val.item(), ssim_val.item(), lpips_val.item()
+    return psnr_value, ssim_value, lpips_value
 
 def main():
     # Paths
@@ -261,8 +246,13 @@ def main():
     left_gt_image_dir = Path('/workspace/datasets/endolrm_dataset/stereomis/p2_6/left_finalpass')
     left_output_dir = Path('/workspace/EndoLRMGS/stereomis/zxhezexin/ablation_study/base/left_view_reprojected_images')
     right_output_dir = Path('/workspace/EndoLRMGS/stereomis/zxhezexin/ablation_study/base/right_view_reprojected_images')
+    left_vis_dir = Path('/workspace/EndoLRMGS/stereomis/zxhezexin/ablation_study/base/left_view_iou_visualizations')
+    right_vis_dir = Path('/workspace/EndoLRMGS/stereomis/zxhezexin/ablation_study/base/right_view_iou_visualizations')
+    
     left_output_dir.mkdir(exist_ok=True)
     right_output_dir.mkdir(exist_ok=True)
+    left_vis_dir.mkdir(exist_ok=True)
+    right_vis_dir.mkdir(exist_ok=True)
 
     # Infer image size from left GT (rectified images)
     left_gts = sorted(left_gt_image_dir.glob('*.png'))
@@ -302,24 +292,92 @@ def main():
     lpips_model = lpips.LPIPS(net='alex').cuda() if torch.cuda.is_available() else lpips.LPIPS(net='alex')
     lpips_model.eval()
 
+    # Store results
+    all_results = []
+
     for idx in tqdm(range(min_count)):
         pcd_path = point_clouds[idx]
         frame_name = pcd_path.stem
 
         # Left projection: retain original behavior
-        left_img = project_pointcloud_generic(
+        left_img, left_proj_mask = project_pointcloud_generic(
             pcd_path, KL_orig, image_size, None, None,
             str(left_output_dir / f"{frame_name}_left.png"), interpolate=True, flip_z=False,
             inpaint_near_points=True, near_dist_thresh=5
         )
 
         # Right projection: use P2 directly (includes rectification offset)
-        right_img = project_pointcloud_generic(
+        right_img, right_proj_mask = project_pointcloud_generic(
             pcd_path, P2, image_size, R_right, T_right,
             str(right_output_dir / f"{frame_name}_right.png"), 
             interpolate=True, use_projection_matrix=True, flip_z=False,
             inpaint_near_points=True, near_dist_thresh=5
         )
+        
+        # Load GT masks and images
+        left_mask_path = left_masks[idx]
+        right_mask_path = right_masks[idx]
+        left_gt_img_path = left_gts[idx]
+        right_gt_img_path = right_gts[idx]
+        
+        left_gt_mask = cv2.imread(str(left_mask_path), cv2.IMREAD_GRAYSCALE)
+        right_gt_mask = cv2.imread(str(right_mask_path), cv2.IMREAD_GRAYSCALE)
+        left_gt_img = cv2.imread(str(left_gt_img_path))
+        right_gt_img = cv2.imread(str(right_gt_img_path))
+        
+        # Convert BGR to RGB for consistency
+        left_gt_img = cv2.cvtColor(left_gt_img, cv2.COLOR_BGR2RGB)
+        right_gt_img = cv2.cvtColor(right_gt_img, cv2.COLOR_BGR2RGB)
+        
+        # Calculate IoU scores
+        left_iou = calculate_iou(left_proj_mask, left_gt_mask == 255)
+        right_iou = calculate_iou(right_proj_mask, right_gt_mask == 255)
+        
+        # Calculate metrics in masked regions
+        left_psnr, left_ssim, left_lpips = calculate_masked_metrics(
+            left_img, left_gt_img, left_gt_mask)
+        right_psnr, right_ssim, right_lpips = calculate_masked_metrics(
+            right_img, right_gt_img, right_gt_mask)
+        
+        # Create color-coded visualizations
+        create_color_visualization(
+            left_proj_mask, 
+            left_gt_mask == 255,
+            left_vis_dir / f"{frame_name}_left_iou_vis.png"
+        )
+        create_color_visualization(
+            right_proj_mask,
+            right_gt_mask == 255, 
+            right_vis_dir / f"{frame_name}_right_iou_vis.png"
+        )
+        
+        # Store results
+        all_results.append({
+            'frame': frame_name,
+            'left_iou': left_iou,
+            'right_iou': right_iou,
+            'left_psnr': left_psnr if left_psnr is not None else np.nan,
+            'left_ssim': left_ssim if left_ssim is not None else np.nan,
+            'left_lpips': left_lpips if left_lpips is not None else np.nan,
+            'right_psnr': right_psnr if right_psnr is not None else np.nan,
+            'right_ssim': right_ssim if right_ssim is not None else np.nan,
+            'right_lpips': right_lpips if right_lpips is not None else np.nan
+        })
+        
+        print(f"{frame_name} - Left IoU: {left_iou:.4f}, Right IoU: {right_iou:.4f}")
+        if left_psnr is not None:
+            print(f"  Left - PSNR: {left_psnr:.4f}, SSIM: {left_ssim:.4f}, LPIPS: {left_lpips:.4f}")
+        if right_psnr is not None:
+            print(f"  Right - PSNR: {right_psnr:.4f}, SSIM: {right_ssim:.4f}, LPIPS: {right_lpips:.4f}")
+    
+    # Save IoU scores to CSV
+    results_df = pd.DataFrame(all_results)
+    csv_path = left_output_dir.parent / 'reprojection_metrics.csv'
+    results_df.to_csv(csv_path, index=False)
+    print(f"\nMetrics saved to: {csv_path}")
+    print(f"\nAverage Metrics:")
+    print(f"Left  - IoU: {results_df['left_iou'].mean():.4f}, PSNR: {results_df['left_psnr'].mean():.2f}, SSIM: {results_df['left_ssim'].mean():.4f}, LPIPS: {results_df['left_lpips'].mean():.4f}")
+    print(f"Right - IoU: {results_df['right_iou'].mean():.4f}, PSNR: {results_df['right_psnr'].mean():.2f}, SSIM: {results_df['right_ssim'].mean():.4f}, LPIPS: {results_df['right_lpips'].mean():.4f}")
 
 if __name__ == "__main__":
     main()
