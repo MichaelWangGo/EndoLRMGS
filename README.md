@@ -137,6 +137,7 @@ python ./evaluation/metrics.py
 
 ### Evaluate surgical instruments
 ```bash
+python postprocess_sequences_stereomis.py
 python ./evaluation/tools_reprojection_loss.py
 ```
 
@@ -144,6 +145,7 @@ python ./evaluation/tools_reprojection_loss.py
 
 This project builds upon the following works:
 - [EndoGaussian](https://github.com/CUHK-AIM-Group/EndoGaussian.git)
+- [Mip-Splatting](https://github.com/autonomousvision/mip-splatting.git)
 - [LRM](https://yiconghong.me/LRM/)
 - [OpenLRM](https://github.com/3DTopia/OpenLRM.git)
 - [DEVA](https://github.com/hkchengrex/Tracking-Anything-with-DEVA.git)
