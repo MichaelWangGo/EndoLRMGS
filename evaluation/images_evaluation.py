@@ -114,9 +114,9 @@ def load_depth_image(depth_path):
 
 def main():
     # Define paths
-    rendered_dir = '/workspace/EndoLRMGS/stereomis/zxhezexin/ablation_study/base/left_view_reprojected_images'
-    gt_dir = '/workspace/datasets/endolrm_dataset/stereomis/p2_6/left_finalpass'
-    mask_dir = '/workspace/datasets/endolrm_dataset/stereomis/p2_6/binary_mask_deva'
+    rendered_dir = '/workspace/EndoLRMGS/stereomis/zxhezexin/ablation_study/base/right_view_reprojected_images'
+    gt_dir = '/workspace/datasets/endolrm_dataset/stereomis/p2_6/right_finalpass'
+    mask_dir = '/workspace/Tracking-Anything-with-DEVA/output/stereomis/p2_6/right_finalpass/binary_mask_deva'
 
     rendered_depth = '/workspace/EndoLRMGS/stereomis/zxhezexin/openlrm-mix-base-1.1/rendered_depth'
     gt_depth = '/workspace/datasets/endolrm_dataset/stereomis/p2_6/depth'

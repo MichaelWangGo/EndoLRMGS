@@ -130,6 +130,16 @@ accelerate launch --config_file ./configs/accelerate-train.yaml \
     --gaussian_config ./FMGaussianSplatting/arguments/scared/d1k1.py
 ```
 
+### Evaluate tissues
+```bash
+python ./evaluation/metrics.py
+```
+
+### Evaluate surgical instruments
+```bash
+python ./evaluation/tools_reprojection_loss.py
+```
+
 ## Acknowledgements
 
 This project builds upon the following works:
