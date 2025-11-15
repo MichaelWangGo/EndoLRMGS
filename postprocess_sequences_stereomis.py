@@ -17,7 +17,6 @@ except ImportError:
     CUDA_AVAILABLE = False
     print("CuPy not available, using CPU")
 
-
 def perspective_project(points, K, use_cuda=True):
     """Project 3D points to 2D using perspective projection"""
     if CUDA_AVAILABLE and use_cuda and isinstance(points, np.ndarray):
@@ -250,8 +249,7 @@ def get_z_at_xy(bg_points, target_x, target_y):
     else:
         # If no exact match, find nearest point
         distances = np.sqrt(
-            (bg_points[:, 0] - target_x)**2 + 
-            (bg_points[:, 1] - target_y)**2
+            (bg_points[:, 0] - target_x)**2 + (bg_points[:, 1] - target_y)**2
         )
         nearest_idx = np.argmin(distances)
         return int(bg_points[nearest_idx][2])
@@ -266,7 +264,7 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
     # Load mask and depth
     mask_rgb = cv2.imread(mask_path)
     depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
-    
+    import ipdb; ipdb.set_trace()
     # Find unique colors in mask
     unique_colors = np.unique(mask_rgb.reshape(-1, 3), axis=0)
     unique_colors = unique_colors[~np.all(unique_colors == [0, 0, 0], axis=1)]
@@ -286,6 +284,7 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
     initial_iou_scores = []
     final_iou_scores = []
     initial_projections = []
+    initial_transformed_pcds = []
     
     for pcd, mask, idx in tool_pairs:
         # 1. Transform points
@@ -297,6 +296,9 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
         transformed_pcd = o3d.geometry.PointCloud()
         transformed_pcd.points = o3d.utility.Vector3dVector(transformed_points)
         transformed_pcd.colors = o3d.utility.Vector3dVector(colors)
+        
+        # Store initial transformed point cloud for later combination
+        initial_transformed_pcds.append(transformed_pcd)
         
         # 2. Get background points from depth
         _, bg_points = process_masked_region(mask, depth, K1, use_cuda=CUDA_AVAILABLE)
@@ -453,6 +455,21 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
         print(f"Tool {idx} - Initial IoU: {initial_iou_scores[-1]:.4f}")
         print(f"Tool {idx} - Final IoU: {best_iou:.4f}")
     
+    # Save individual and combined initial transformed point clouds
+    initial_tools_dir = os.path.join(output_base_dir.replace('postprocessed_tools', 'initial_tools'))
+    os.makedirs(initial_tools_dir, exist_ok=True)
+    
+    if len(initial_transformed_pcds) >= 2:
+        # # Save individual initial transformed point clouds
+        # for idx, initial_pcd in enumerate(initial_transformed_pcds):
+        #     initial_output_path = os.path.join(initial_tools_dir, f"frame_{frame_num}_tool{idx}_initial.ply")
+        #     o3d.io.write_point_cloud(initial_output_path, initial_pcd)
+        
+        # Combine and save initial transformed point clouds
+        combined_initial_pcd = initial_transformed_pcds[0] + initial_transformed_pcds[1]
+        initial_combined_path = os.path.join(initial_tools_dir, f"frame_{frame_num}_combined_initial.ply")
+        o3d.io.write_point_cloud(initial_combined_path, combined_initial_pcd)
+    
     # Create visualization
     if len(results) >= 2:
         final_vis = np.zeros((height, width, 3), dtype=np.uint8)
@@ -507,10 +524,10 @@ K1 = np.array([
 
 if __name__ == "__main__":
     # # Define base directories
-    pcd_base_dir = "/workspace/EndoLRMGS/stereomis/zxhezexin/openlrm-mix-base-1.1/meshes"
-    depth_base_dir = "/workspace/EndoLRMGS/stereomis/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
-    mask_base_dir = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/Annotations"
-    output_base_dir = "/workspace/EndoLRMGS/stereomis/zxhezexin/ablation_study/base/postprocessed_tools"
+    pcd_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/v1/zxhezexin/openlrm-mix-base-1.1/meshes"
+    depth_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/v1/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
+    mask_base_dir = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/Annotations_v5"
+    output_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/v1/zxhezexin/postprocessed_tools"
 
     # Create output folder if it doesn't exist
     os.makedirs(output_base_dir, exist_ok=True)

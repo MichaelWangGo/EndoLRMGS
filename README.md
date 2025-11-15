@@ -116,7 +116,7 @@ For Stereomis dataset:
 python -m openlrm.launch infer.lrm \
     --infer ./configs/infer-b-stereomis.yaml \
     --model_name zxhezexin/openlrm-mix-base-1.1 \
-    --image_input /workspace/datasets/endolrm_dataset/stereomis/new_p2_6/left_finalpass \
+    --image_input /workspace/datasets/endolrm_dataset/stereomis/p2_6/left_finalpass \
     --export_mesh true \
     --gaussian_config ./FMGaussianSplatting/arguments/stereomis/stereomis_2_6.py
 ```
@@ -128,7 +128,7 @@ python -m openlrm.launch infer.lrm \
     --model_name zxhezexin/openlrm-mix-base-1.1 \
     --image_input /workspace/dataset/endolrm_dataset/scared/dataset_6/data/left_finalpass \
     --export_mesh true \
-    --gaussian_config ./FMGaussianSplatting/arguments/scared/d1k1.py
+    --gaussian_config ./FMGaussianSplatting/arguments/scared/d6k4.py
 ```
 
 ### Training
@@ -166,7 +166,7 @@ accelerate launch --config_file ./configs/accelerate-train.yaml \
     -m openlrm.launch train.lrm \
     --config ./configs/train-sample.yaml \
     --no-freeze_gaussian \
-    --gaussian_config ./FMGaussianSplatting/arguments/scared/d1k1.py
+    --gaussian_config ./FMGaussianSplatting/arguments/scared/d6k4.py
 ```
 
 ### Evaluation
