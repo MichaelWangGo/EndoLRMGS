@@ -170,6 +170,7 @@ def project_pointcloud_generic(point_cloud_path, K_or_P, image_size, R_rel=None,
     depths = depths[in_bounds]
 
     img = np.ones((h, w, 3), dtype=np.uint8) * 255
+    # img = np.zeros((h, w, 3), dtype=np.uint8)
     depth_buffer = np.full((h, w), np.inf, dtype=np.float32)
 
     px = uv.astype(int)
@@ -185,7 +186,7 @@ def project_pointcloud_generic(point_cloud_path, K_or_P, image_size, R_rel=None,
             projection_mask[y, x] = True
 
     # Dilate projection mask slightly to match postprocess approach
-    projection_mask = cv2.dilate(projection_mask.astype(np.uint8), np.ones((3,3), np.uint8)).astype(bool)
+    projection_mask = cv2.dilate(projection_mask.astype(np.uint8), np.ones((5,5), np.uint8)).astype(bool)
 
     if interpolate:
         # Hole = no projection (depth_buffer == inf)
@@ -209,42 +210,103 @@ def project_pointcloud_generic(point_cloud_path, K_or_P, image_size, R_rel=None,
     
     return img, projection_mask
 
+# def calculate_masked_metrics(image1, image2, mask, lpips_model=lpips.LPIPS(net='alex').cuda()):
+#     # Apply mask to both images
+#     masked_image1 = image1.astype(np.float32)
+#     masked_image2 = image2.astype(np.float32)
+
+#     # Set unmasked areas to 0
+#     mask = (mask / 255.0).astype(np.float32)  # Ensure mask is also float32
+#     masked_image1 = masked_image1 * mask[:, :, np.newaxis]
+#     masked_image2 = masked_image2 * mask[:, :, np.newaxis]
+    
+#     # Convert back to uint8 for OpenCV operations
+#     masked_image1_uint8 = masked_image1.astype(np.uint8)
+#     masked_image2_uint8 = masked_image2.astype(np.uint8)
+    
+#     cv2.imwrite('masked_image1.png', masked_image1_uint8)
+#     cv2.imwrite('masked_image2.png', masked_image2_uint8)
+    
+#     # Calculate metrics only on unmasked areas
+#     psnr_value = psnr(masked_image1, masked_image2, data_range=255)
+    
+#     gray1 = cv2.cvtColor(masked_image1_uint8, cv2.COLOR_BGR2GRAY)
+#     gray2 = cv2.cvtColor(masked_image2_uint8, cv2.COLOR_BGR2GRAY)
+#     ssim_value = ssim(gray1, gray2)
+    
+#     # For LPIPS, we need to handle the mask differently
+#     image1_tensor = lpips.im2tensor(masked_image1_uint8).cuda()
+#     image2_tensor = lpips.im2tensor(masked_image2_uint8).cuda()
+#     lpips_value = lpips_model(image1_tensor, image2_tensor).item()
+    
+#     return psnr_value, ssim_value, lpips_value
+
 def calculate_masked_metrics(image1, image2, mask, lpips_model=lpips.LPIPS(net='alex').cuda()):
-    # Apply mask to both images
-    masked_image1 = image1.copy()
-    masked_image2 = image2.copy()
-    # import ipdb; ipdb.set_trace()
-    # Set masked areas to 0
-    masked_image1 = masked_image1 * mask[:, :, np.newaxis]
-    masked_image2 = masked_image2 * mask[:, :, np.newaxis]
-    # masked_image2[~mask] = 0
-    cv2.imwrite('masked_image1.png', masked_image1)
-    # Calculate metrics only on unmasked areas
-    psnr_value = psnr(masked_image1, masked_image2)
+    # Dilate the mask using 5x5 kernel
+    kernel = np.ones((5, 5), np.uint8)
+    dilated_mask = cv2.dilate(mask, kernel, iterations=1)
     
-    gray1 = cv2.cvtColor(masked_image1, cv2.COLOR_BGR2GRAY)
-    gray2 = cv2.cvtColor(masked_image2, cv2.COLOR_BGR2GRAY)
-    ssim_value = ssim(gray1, gray2)
+    # Create binary mask
+    valid_pixels = dilated_mask > 0
+    if not valid_pixels.any():
+        return None, None, None
     
-    # For LPIPS, we need to handle the mask differently
-    image1_tensor = lpips.im2tensor(masked_image1).cuda()
-    image2_tensor = lpips.im2tensor(masked_image2).cuda()
+    # For PSNR, SSIM, and LPIPS, crop to bounding box of mask
+    rows = np.any(valid_pixels, axis=1)
+    cols = np.any(valid_pixels, axis=0)
+    ymin, ymax = np.where(rows)[0][[0, -1]]
+    xmin, xmax = np.where(cols)[0][[0, -1]]
+    
+    # Crop images and mask to bounding box
+    crop_img1 = image1[ymin:ymax+1, xmin:xmax+1]
+    crop_img2 = image2[ymin:ymax+1, xmin:xmax+1]
+    crop_mask = valid_pixels[ymin:ymax+1, xmin:xmax+1]
+    
+    # Apply mask to cropped images
+    masked_crop1 = crop_img1.copy().astype(np.float32)
+    masked_crop2 = crop_img2.copy().astype(np.float32)
+    masked_crop1[~crop_mask] = 0
+    masked_crop2[~crop_mask] = 0
+    
+    # Calculate PSNR on cropped masked region
+    psnr_value = psnr(masked_crop1, masked_crop2, data_range=255)
+    
+    # Convert to uint8 and grayscale for SSIM
+    masked_crop1_uint8 = masked_crop1.astype(np.uint8)
+    masked_crop2_uint8 = masked_crop2.astype(np.uint8)
+    
+    gray1 = cv2.cvtColor(masked_crop1_uint8, cv2.COLOR_RGB2GRAY)
+    gray2 = cv2.cvtColor(masked_crop2_uint8, cv2.COLOR_RGB2GRAY)
+    
+    # Calculate SSIM on the cropped masked region
+    ssim_value = ssim(gray1, gray2, data_range=255)
+    
+    # For LPIPS, use the cropped masked images
+    image1_tensor = lpips.im2tensor(masked_crop1_uint8).cuda() if torch.cuda.is_available() else lpips.im2tensor(masked_crop1_uint8)
+    image2_tensor = lpips.im2tensor(masked_crop2_uint8).cuda() if torch.cuda.is_available() else lpips.im2tensor(masked_crop2_uint8)
     lpips_value = lpips_model(image1_tensor, image2_tensor).item()
+    
+    # Optional: save debug images
+    cv2.imwrite('masked_image1.png', cv2.cvtColor(masked_crop1_uint8, cv2.COLOR_RGB2BGR))
+    cv2.imwrite('masked_image2.png', cv2.cvtColor(masked_crop2_uint8, cv2.COLOR_RGB2BGR))
     
     return psnr_value, ssim_value, lpips_value
 
+
 def main():
     # Paths
-    pointcloud_dir = Path('/workspace/EndoLRMGS/stereomis/zxhezexin/ablation_study/base/postprocessed_tools')
+    pointcloud_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/base/zxhezexin/postprocessed_tools')
     frame_data_file = Path('/workspace/datasets/endolrm_dataset/stereomis/p2_6/frame_data.json')
-    right_mask_dir = Path('/workspace/Tracking-Anything-with-DEVA/output/stereomis/p2_6/right_finalpass/binary_mask_deva')
-    right_gt_image_dir = Path('/workspace/datasets/endolrm_dataset/stereomis/p2_6/right_finalpass')
+
     left_mask_dir = Path('/workspace/datasets/endolrm_dataset/stereomis/p2_6/binary_mask_deva')
     left_gt_image_dir = Path('/workspace/datasets/endolrm_dataset/stereomis/p2_6/left_finalpass')
-    left_output_dir = Path('/workspace/EndoLRMGS/stereomis/zxhezexin/ablation_study/base/left_view_reprojected_images')
-    right_output_dir = Path('/workspace/EndoLRMGS/stereomis/zxhezexin/ablation_study/base/right_view_reprojected_images')
-    left_vis_dir = Path('/workspace/EndoLRMGS/stereomis/zxhezexin/ablation_study/base/left_view_iou_visualizations')
-    right_vis_dir = Path('/workspace/EndoLRMGS/stereomis/zxhezexin/ablation_study/base/right_view_iou_visualizations')
+    right_mask_dir = Path('/workspace/Tracking-Anything-with-DEVA/output/stereomis/base/right_view/binary_mask_deva')
+    right_gt_image_dir = Path('/workspace/datasets/endolrm_dataset/stereomis/p2_6/right_finalpass')
+
+    left_output_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/base/left_view_reprojected_images')
+    right_output_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/base/right_view_reprojected_images')
+    left_vis_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/base/left_view_iou_visualizations')
+    right_vis_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/base/right_view_iou_visualizations')
     
     left_output_dir.mkdir(exist_ok=True)
     right_output_dir.mkdir(exist_ok=True)
@@ -330,7 +392,7 @@ def main():
         left_iou = calculate_iou(left_proj_mask, left_gt_mask == 255)
         right_iou = calculate_iou(right_proj_mask, right_gt_mask == 255)
         
-        # Calculate metrics in masked regions
+        # # Calculate metrics in masked regions
         left_psnr, left_ssim, left_lpips = calculate_masked_metrics(
             left_img, left_gt_img, left_gt_mask)
         right_psnr, right_ssim, right_lpips = calculate_masked_metrics(

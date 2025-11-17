@@ -264,7 +264,7 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
     # Load mask and depth
     mask_rgb = cv2.imread(mask_path)
     depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
-    import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     # Find unique colors in mask
     unique_colors = np.unique(mask_rgb.reshape(-1, 3), axis=0)
     unique_colors = unique_colors[~np.all(unique_colors == [0, 0, 0], axis=1)]
@@ -524,10 +524,10 @@ K1 = np.array([
 
 if __name__ == "__main__":
     # # Define base directories
-    pcd_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/v1/zxhezexin/openlrm-mix-base-1.1/meshes"
-    depth_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/v1/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
+    pcd_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/base/zxhezexin/openlrm-mix-base-1.1/meshes"
+    depth_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/base/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
     mask_base_dir = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/Annotations_v5"
-    output_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/v1/zxhezexin/postprocessed_tools"
+    output_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/v5/zxhezexin/postprocessed_tools"
 
     # Create output folder if it doesn't exist
     os.makedirs(output_base_dir, exist_ok=True)
