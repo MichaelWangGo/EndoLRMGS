@@ -10,6 +10,7 @@ import lpips
 import torch
 import json
 import pandas as pd
+from PIL import Image
 
 
 def load_calibration_frame_json(frame_json_path, image_size_hw):
@@ -115,11 +116,12 @@ def create_color_visualization(projection_mask, gt_mask, output_path):
     
     cv2.imwrite(str(output_path), cv2.cvtColor(vis, cv2.COLOR_RGB2BGR))
 
-def project_pointcloud_generic(point_cloud_path, K_or_P, image_size, R_rel=None, T_rel=None, output_path=None, interpolate=False, flip_z=False, use_projection_matrix=False, inpaint_near_points=False, near_dist_thresh=6):
+def project_pointcloud_generic(point_cloud_path, K_or_P, image_size, R_rel=None, T_rel=None, output_path=None, interpolate=False, flip_z=False, use_projection_matrix=False, inpaint_near_points=False, near_dist_thresh=6, gt_mask=None):
     """Project point cloud into target view.
     
     Args:
         use_projection_matrix: If True, K_or_P is a 3x4 projection matrix; otherwise 3x3 intrinsic matrix
+        gt_mask: Optional ground truth mask (H, W), uint8 where 255 = valid region. If provided, masked areas are set to white before projection.
         
     Returns:
         img: Rendered image
@@ -169,8 +171,12 @@ def project_pointcloud_generic(point_cloud_path, K_or_P, image_size, R_rel=None,
     colors = colors[in_bounds]
     depths = depths[in_bounds]
 
-    img = np.ones((h, w, 3), dtype=np.uint8) * 255
-    # img = np.zeros((h, w, 3), dtype=np.uint8)
+    img = np.zeros((h, w, 3), dtype=np.uint8)
+    # Set ground truth masked areas to white if mask is provided
+    if gt_mask is not None:
+        white_mask = gt_mask > 0
+        img[white_mask] = 255
+
     depth_buffer = np.full((h, w), np.inf, dtype=np.float32)
 
     px = uv.astype(int)
@@ -206,96 +212,118 @@ def project_pointcloud_generic(point_cloud_path, K_or_P, image_size, R_rel=None,
                 img = cv2.inpaint(img, inpaint_mask, 3, cv2.INPAINT_TELEA)
 
     if output_path:
-        cv2.imwrite(output_path, cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+        # cv2.imwrite(output_path, cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+        Image.fromarray(img).save(output_path)
     
     return img, projection_mask
 
-# def calculate_masked_metrics(image1, image2, mask, lpips_model=lpips.LPIPS(net='alex').cuda()):
-#     # Apply mask to both images
-#     masked_image1 = image1.astype(np.float32)
-#     masked_image2 = image2.astype(np.float32)
-
-#     # Set unmasked areas to 0
-#     mask = (mask / 255.0).astype(np.float32)  # Ensure mask is also float32
-#     masked_image1 = masked_image1 * mask[:, :, np.newaxis]
-#     masked_image2 = masked_image2 * mask[:, :, np.newaxis]
-    
-#     # Convert back to uint8 for OpenCV operations
-#     masked_image1_uint8 = masked_image1.astype(np.uint8)
-#     masked_image2_uint8 = masked_image2.astype(np.uint8)
-    
-#     cv2.imwrite('masked_image1.png', masked_image1_uint8)
-#     cv2.imwrite('masked_image2.png', masked_image2_uint8)
-    
-#     # Calculate metrics only on unmasked areas
-#     psnr_value = psnr(masked_image1, masked_image2, data_range=255)
-    
-#     gray1 = cv2.cvtColor(masked_image1_uint8, cv2.COLOR_BGR2GRAY)
-#     gray2 = cv2.cvtColor(masked_image2_uint8, cv2.COLOR_BGR2GRAY)
-#     ssim_value = ssim(gray1, gray2)
-    
-#     # For LPIPS, we need to handle the mask differently
-#     image1_tensor = lpips.im2tensor(masked_image1_uint8).cuda()
-#     image2_tensor = lpips.im2tensor(masked_image2_uint8).cuda()
-#     lpips_value = lpips_model(image1_tensor, image2_tensor).item()
-    
-#     return psnr_value, ssim_value, lpips_value
-
 def calculate_masked_metrics(image1, image2, mask, lpips_model=lpips.LPIPS(net='alex').cuda()):
-    # Dilate the mask using 5x5 kernel
-    kernel = np.ones((5, 5), np.uint8)
-    dilated_mask = cv2.dilate(mask, kernel, iterations=1)
+    # Apply mask to both images
+    masked_image1 = image1.astype(np.float32)
+    masked_image2 = image2.astype(np.float32)
+    # Set unmasked areas to 0
+    mask = (mask / 255.0).astype(np.float32)  # Ensure mask is also float32
+    masked_image1 = masked_image1 #* mask[:, :, np.newaxis]
+    masked_image2 = masked_image2 * mask[:, :, np.newaxis]
     
-    # Create binary mask
-    valid_pixels = dilated_mask > 0
-    if not valid_pixels.any():
-        return None, None, None
+    # Convert back to uint8 for OpenCV operations
+    masked_image1_uint8 = masked_image1.astype(np.uint8)
+    masked_image2_uint8 = masked_image2.astype(np.uint8)
     
-    # For PSNR, SSIM, and LPIPS, crop to bounding box of mask
-    rows = np.any(valid_pixels, axis=1)
-    cols = np.any(valid_pixels, axis=0)
-    ymin, ymax = np.where(rows)[0][[0, -1]]
-    xmin, xmax = np.where(cols)[0][[0, -1]]
+    cv2.imwrite('masked_image1.png', masked_image1_uint8)
+    cv2.imwrite('masked_image2.png', masked_image2_uint8)
     
-    # Crop images and mask to bounding box
-    crop_img1 = image1[ymin:ymax+1, xmin:xmax+1]
-    crop_img2 = image2[ymin:ymax+1, xmin:xmax+1]
-    crop_mask = valid_pixels[ymin:ymax+1, xmin:xmax+1]
+    # Calculate metrics only on unmasked areas
+    psnr_value = psnr(masked_image1, masked_image2, data_range=255)
     
-    # Apply mask to cropped images
-    masked_crop1 = crop_img1.copy().astype(np.float32)
-    masked_crop2 = crop_img2.copy().astype(np.float32)
-    masked_crop1[~crop_mask] = 0
-    masked_crop2[~crop_mask] = 0
+    gray1 = cv2.cvtColor(masked_image1_uint8, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(masked_image2_uint8, cv2.COLOR_BGR2GRAY)
+    ssim_value = ssim(gray1, gray2)
     
-    # Calculate PSNR on cropped masked region
-    psnr_value = psnr(masked_crop1, masked_crop2, data_range=255)
-    
-    # Convert to uint8 and grayscale for SSIM
-    masked_crop1_uint8 = masked_crop1.astype(np.uint8)
-    masked_crop2_uint8 = masked_crop2.astype(np.uint8)
-    
-    gray1 = cv2.cvtColor(masked_crop1_uint8, cv2.COLOR_RGB2GRAY)
-    gray2 = cv2.cvtColor(masked_crop2_uint8, cv2.COLOR_RGB2GRAY)
-    
-    # Calculate SSIM on the cropped masked region
-    ssim_value = ssim(gray1, gray2, data_range=255)
-    
-    # For LPIPS, use the cropped masked images
-    image1_tensor = lpips.im2tensor(masked_crop1_uint8).cuda() if torch.cuda.is_available() else lpips.im2tensor(masked_crop1_uint8)
-    image2_tensor = lpips.im2tensor(masked_crop2_uint8).cuda() if torch.cuda.is_available() else lpips.im2tensor(masked_crop2_uint8)
+    # For LPIPS, we need to handle the mask differently
+    image1_tensor = lpips.im2tensor(masked_image1_uint8).cuda()
+    image2_tensor = lpips.im2tensor(masked_image2_uint8).cuda()
     lpips_value = lpips_model(image1_tensor, image2_tensor).item()
     
-    # Optional: save debug images
-    cv2.imwrite('masked_image1.png', cv2.cvtColor(masked_crop1_uint8, cv2.COLOR_RGB2BGR))
-    cv2.imwrite('masked_image2.png', cv2.cvtColor(masked_crop2_uint8, cv2.COLOR_RGB2BGR))
-    
     return psnr_value, ssim_value, lpips_value
+
+# def calculate_masked_metrics(image1, image2, mask, lpips_model=lpips.LPIPS(net='alex').cuda()):
+#     """Calculate PSNR, SSIM, and LPIPS only within masked regions.
+    
+#     Args:
+#         image1: RGB image (H, W, 3), uint8 or float32
+#         image2: RGB image (H, W, 3), uint8 or float32
+#         mask: Binary mask (H, W), uint8 where 255 = valid region
+#         lpips_model: Pre-initialized LPIPS model
+    
+#     Returns:
+#         psnr_value, ssim_value, lpips_value (all float or None if no valid pixels)
+#     """
+
+#     # Create binary mask
+#     valid_pixels = mask > 0
+#     if not valid_pixels.any():
+#         return None, None, None
+    
+#     # Convert images to float32 for calculations
+#     img1_float = image1.astype(np.float32)
+#     img2_float = image2.astype(np.float32)
+    
+#     # --- PSNR Calculation (only on masked pixels) ---
+#     # Extract only valid pixels
+#     valid_img1 = img1_float[valid_pixels]
+#     valid_img2 = img2_float[valid_pixels]
+    
+#     # Calculate MSE only on valid pixels
+#     mse = np.mean((valid_img1 - valid_img2) ** 2)
+#     if mse == 0:
+#         psnr_value = float('inf')
+#     else:
+#         psnr_value = 20 * np.log10(255.0 / np.sqrt(mse))
+    
+#     # --- SSIM Calculation (only on masked pixels) ---
+#     # Convert to grayscale
+#     gray1 = cv2.cvtColor(image1, cv2.COLOR_RGB2GRAY).astype(np.float32)
+#     gray2 = cv2.cvtColor(image2, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    
+#     # Calculate SSIM with full map to get per-pixel scores
+#     ssim_map = ssim(gray1, gray2, data_range=255, full=True)[1]
+    
+#     # Average SSIM only over masked pixels
+#     ssim_value = np.mean(ssim_map[valid_pixels])
+    
+#     # --- LPIPS Calculation ---
+#     # Crop to bounding box of mask to reduce computation
+#     rows = np.any(valid_pixels, axis=1)
+#     cols = np.any(valid_pixels, axis=0)
+#     ymin, ymax = np.where(rows)[0][[0, -1]]
+#     xmin, xmax = np.where(cols)[0][[0, -1]]
+    
+#     # Crop images and mask
+#     crop_img1 = image1[ymin:ymax+1, xmin:xmax+1].astype(np.uint8)
+#     crop_img2 = image2[ymin:ymax+1, xmin:xmax+1].astype(np.uint8)
+#     crop_mask = valid_pixels[ymin:ymax+1, xmin:xmax+1]
+    
+#     # Create masked versions for LPIPS (set invalid regions to black)
+#     masked_crop1 = crop_img1.copy()
+#     masked_crop2 = crop_img2.copy()
+#     masked_crop1[~crop_mask] = 0
+#     masked_crop2[~crop_mask] = 0
+    
+#     # Convert to tensors and compute LPIPS
+#     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+#     image1_tensor = lpips.im2tensor(masked_crop1).to(device)
+#     image2_tensor = lpips.im2tensor(masked_crop2).to(device)
+    
+#     with torch.no_grad():
+#         lpips_value = lpips_model(image1_tensor, image2_tensor).item()
+    
+#     return psnr_value, ssim_value, lpips_value
 
 
 def main():
     # Paths
-    pointcloud_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/base/zxhezexin/postprocessed_tools')
+    pointcloud_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/v3/zxhezexin/postprocessed_tools')
     frame_data_file = Path('/workspace/datasets/endolrm_dataset/stereomis/p2_6/frame_data.json')
 
     left_mask_dir = Path('/workspace/datasets/endolrm_dataset/stereomis/p2_6/binary_mask_deva')
@@ -303,10 +331,10 @@ def main():
     right_mask_dir = Path('/workspace/Tracking-Anything-with-DEVA/output/stereomis/base/right_view/binary_mask_deva')
     right_gt_image_dir = Path('/workspace/datasets/endolrm_dataset/stereomis/p2_6/right_finalpass')
 
-    left_output_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/base/left_view_reprojected_images')
-    right_output_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/base/right_view_reprojected_images')
-    left_vis_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/base/left_view_iou_visualizations')
-    right_vis_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/base/right_view_iou_visualizations')
+    left_output_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/v3/left_view_reprojected_images')
+    right_output_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/v3/right_view_reprojected_images')
+    left_vis_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/v3/left_view_iou_visualizations')
+    right_vis_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/v3/right_view_iou_visualizations')
     
     left_output_dir.mkdir(exist_ok=True)
     right_output_dir.mkdir(exist_ok=True)
@@ -358,29 +386,31 @@ def main():
         pcd_path = point_clouds[idx]
         frame_name = pcd_path.stem
 
-        # Left projection: retain original behavior
+        # Load GT masks first
+        left_mask_path = left_masks[idx]
+        right_mask_path = right_masks[idx]
+        left_gt_mask_original = cv2.imread(str(left_mask_path), cv2.IMREAD_GRAYSCALE)
+        right_gt_mask_original = cv2.imread(str(right_mask_path), cv2.IMREAD_GRAYSCALE)
+
+        # Left projection: use mask for white background
         left_img, left_proj_mask = project_pointcloud_generic(
             pcd_path, KL_orig, image_size, None, None,
             str(left_output_dir / f"{frame_name}_left.png"), interpolate=True, flip_z=False,
-            inpaint_near_points=True, near_dist_thresh=5
+            inpaint_near_points=True, near_dist_thresh=5, gt_mask=left_gt_mask_original
         )
 
-        # Right projection: use P2 directly (includes rectification offset)
+        # Right projection: use mask for white background
         right_img, right_proj_mask = project_pointcloud_generic(
-            pcd_path, P2, image_size, R_right, T_right,
+            pcd_path, P2, image_size, None, None,
             str(right_output_dir / f"{frame_name}_right.png"), 
             interpolate=True, use_projection_matrix=True, flip_z=False,
-            inpaint_near_points=True, near_dist_thresh=5
+            inpaint_near_points=True, near_dist_thresh=5, gt_mask=right_gt_mask_original
         )
         
-        # Load GT masks and images
-        left_mask_path = left_masks[idx]
-        right_mask_path = right_masks[idx]
+        # Load GT images
         left_gt_img_path = left_gts[idx]
         right_gt_img_path = right_gts[idx]
         
-        left_gt_mask = cv2.imread(str(left_mask_path), cv2.IMREAD_GRAYSCALE)
-        right_gt_mask = cv2.imread(str(right_mask_path), cv2.IMREAD_GRAYSCALE)
         left_gt_img = cv2.imread(str(left_gt_img_path))
         right_gt_img = cv2.imread(str(right_gt_img_path))
         
@@ -388,25 +418,25 @@ def main():
         left_gt_img = cv2.cvtColor(left_gt_img, cv2.COLOR_BGR2RGB)
         right_gt_img = cv2.cvtColor(right_gt_img, cv2.COLOR_BGR2RGB)
         
-        # Calculate IoU scores
-        left_iou = calculate_iou(left_proj_mask, left_gt_mask == 255)
-        right_iou = calculate_iou(right_proj_mask, right_gt_mask == 255)
+        # Calculate IoU scores using ORIGINAL masks
+        left_iou = calculate_iou(left_proj_mask, left_gt_mask_original == 255)
+        right_iou = calculate_iou(right_proj_mask, right_gt_mask_original == 255)
         
-        # # Calculate metrics in masked regions
+        # Calculate metrics using masks
         left_psnr, left_ssim, left_lpips = calculate_masked_metrics(
-            left_img, left_gt_img, left_gt_mask)
+            left_img, left_gt_img, left_gt_mask_original, lpips_model)
         right_psnr, right_ssim, right_lpips = calculate_masked_metrics(
-            right_img, right_gt_img, right_gt_mask)
+            right_img, right_gt_img, right_gt_mask_original, lpips_model)
         
-        # Create color-coded visualizations
+        # Create color-coded visualizations using ORIGINAL masks
         create_color_visualization(
             left_proj_mask, 
-            left_gt_mask == 255,
+            left_gt_mask_original == 255,
             left_vis_dir / f"{frame_name}_left_iou_vis.png"
         )
         create_color_visualization(
             right_proj_mask,
-            right_gt_mask == 255, 
+            right_gt_mask_original == 255, 
             right_vis_dir / f"{frame_name}_right_iou_vis.png"
         )
         
@@ -438,5 +468,5 @@ def main():
     print(f"Left  - IoU: {results_df['left_iou'].mean():.4f}, PSNR: {results_df['left_psnr'].mean():.4f}, SSIM: {results_df['left_ssim'].mean():.4f}, LPIPS: {results_df['left_lpips'].mean():.4f}")
     print(f"Right - IoU: {results_df['right_iou'].mean():.4f}, PSNR: {results_df['right_psnr'].mean():.4f}, SSIM: {results_df['right_ssim'].mean():.4f}, LPIPS: {results_df['right_lpips'].mean():.4f}")
 
-if __name__ == "__main__":
-    main()
+
+if __name__ == "__main__":    main()

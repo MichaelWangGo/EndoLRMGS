@@ -199,8 +199,8 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
     
     # Load mask and depth
     mask_rgb = cv2.imread(mask_path)
-    depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
-    
+    depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED) #/ 1000.0  # Convert mm to meters
+    print("Depth max:", np.max(depth), "min:", np.min(depth))
     # Find unique colors in mask
     unique_colors = np.unique(mask_rgb.reshape(-1, 3), axis=0)
     unique_colors = unique_colors[~np.all(unique_colors == [0, 0, 0], axis=1)]
@@ -222,6 +222,7 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
     initial_iou_scores = []  # Add this line
     final_iou_scores = []    # Add this line
     initial_projections = [] # Add this line
+    initial_transformed_pcds = []
 
     for pcd, mask, idx in tool_pairs:
         # 1. Transform points
@@ -233,6 +234,8 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
         transformed_pcd = o3d.geometry.PointCloud()
         transformed_pcd.points = o3d.utility.Vector3dVector(transformed_points)
         transformed_pcd.colors = o3d.utility.Vector3dVector(colors)
+
+        initial_transformed_pcds.append(transformed_pcd)
         
         # 2. Get background points from depth
         _, bg_points = process_masked_region(mask, depth, K1)
@@ -342,6 +345,7 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
         print(f"Tool {idx} - Initial IoU: {initial_iou_scores[-1]:.4f}")
         print(f"Tool {idx} - Final IoU: {best_iou:.4f}")
         
+    
         # Apply best transformation
         final_points = tool_points + best_transform
         transformed_pcd = o3d.geometry.PointCloud()
@@ -353,11 +357,18 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
         
         # Save individual transformed point cloud
         output_path = os.path.join(output_base_dir, f"final_tool{frame_num}.ply")
+        
         o3d.io.write_point_cloud(output_path, transformed_pcd)
         print(f"Tool {idx} - Scale factor: {scale_factor:.4f}")
         print(f"Tool {idx} - Best position: X={best_transform[0]:.4f}, Y={best_transform[1]:.4f}, Z={best_transform[2]:.4f}")
         print(f"Tool {idx} - Best IoU score: {1-best_score:.4f}")
-    
+
+        # Save individual and combined initial transformed point clouds
+    initial_tools_dir = os.path.join(output_base_dir.replace('postprocessed_tools', 'initial_tools'))
+    os.makedirs(initial_tools_dir, exist_ok=True)
+    initial_combined_path = os.path.join(initial_tools_dir, f"frame_{frame_num}_combined_initial.ply")
+    o3d.io.write_point_cloud(initial_combined_path, initial_transformed_pcds[0])
+
     # Create visualization
     if len(results) >= 2:
         final_vis = np.zeros((height, width, 3), dtype=np.uint8)
@@ -404,8 +415,8 @@ if __name__ == "__main__":
     # Define base directories
     pcd_base_dir = "/workspace/EndoLRMGS/scared/zxhezexin/openlrm-mix-base-1.1/meshes"
     depth_base_dir = "/workspace/EndoLRMGS/scared/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
-    mask_base_dir = "/workspace/dataset/endolrm_dataset/scared/dataset_6/data/Annotations"
-    output_base_dir = "/workspace/EndoLRMGS/scared/zxhezexin"
+    mask_base_dir = "/workspace/datasets/endolrm_dataset/scared/dataset_6/data/Annotations"
+    output_base_dir = "/workspace/EndoLRMGS/scared/zxhezexin/postprocessed_tools"
 
     # Create output folder if it doesn't exist
     os.makedirs(output_base_dir, exist_ok=True)

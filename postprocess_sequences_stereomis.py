@@ -524,8 +524,8 @@ K1 = np.array([
 
 if __name__ == "__main__":
     # # Define base directories
-    pcd_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/base/zxhezexin/openlrm-mix-base-1.1/meshes"
-    depth_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/base/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
+    pcd_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/v5/zxhezexin/openlrm-mix-base-1.1/meshes"
+    depth_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/v5/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
     mask_base_dir = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/Annotations_v5"
     output_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/v5/zxhezexin/postprocessed_tools"
 
