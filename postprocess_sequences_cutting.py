@@ -224,6 +224,7 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
     initial_iou_scores = []  # Add this line
     final_iou_scores = []    # Add this line
     initial_projections = [] # Add this line
+    initial_transformed_pcds = []  # NEW: store initial transformed point clouds
 
     for pcd, mask, idx in tool_pairs:
         # 1. Transform points
@@ -231,11 +232,12 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
         colors = np.asarray(pcd.colors)
         transformed_points = transform_points(points, T_source, T_target)
         
-        # Create transformed point cloud
-        transformed_pcd = o3d.geometry.PointCloud()
-        transformed_pcd.points = o3d.utility.Vector3dVector(transformed_points)
-        transformed_pcd.colors = o3d.utility.Vector3dVector(colors)
-        
+        # NEW: save initial (pre-scale, pre-optimization) transformed point cloud
+        init_pcd = o3d.geometry.PointCloud()
+        init_pcd.points = o3d.utility.Vector3dVector(transformed_points)
+        init_pcd.colors = o3d.utility.Vector3dVector(colors)
+        initial_transformed_pcds.append(init_pcd)
+
         # 2. Get background points from depth
         _, bg_points = process_masked_region(mask, depth, K1)
         othor_start_time = time.perf_counter()
@@ -329,54 +331,16 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
         params = [(x,y,z) for x in x_translations
                             for y in y_translations
                             for z in z_translations]
-        results = Parallel(n_jobs=-1)(
+        results_parallel = Parallel(n_jobs=-1)(
             delayed(eval_transform)(x,y,z, tool_points, mask_binary, K1, height, width)
             for x,y,z in params
         )
-        # pick best
-        best_score, best_mask, best_iou = min(results, key=lambda r: r[0])
-
-        # Vectorized position optimization
-        # for x in x_translations:
-        #     for y in y_translations:
-        #         for z in z_translations:
-        #             # Apply translation
-        #             translated_points = tool_points + np.array([x, y, z])
-                    
-        #             # Project points efficiently
-        #             projected_points = perspective_project(translated_points, K1)
-                    
-        #             # Create and evaluate projection mask
-        #             proj_mask = np.zeros((height, width), dtype=bool)
-        #             valid_points = (projected_points[:, 0] >= 0) & (projected_points[:, 0] < width) & \
-        #                          (projected_points[:, 1] >= 0) & (projected_points[:, 1] < height)
-                    
-        #             if np.any(valid_points):
-        #                 coords = projected_points[valid_points].astype(int)
-        #                 proj_mask[coords[:, 1], coords[:, 0]] = True
-                        
-        #                 # Quick dilation for better coverage
-        #                 proj_mask = cv2.dilate(proj_mask.astype(np.uint8), np.ones((3,3), np.uint8)).astype(bool)
-                        
-        #                 # Compute IoU instead of just area difference
-        #                 intersection = np.sum(proj_mask & mask_binary)
-        #                 union = np.sum(proj_mask | mask_binary)
-        #                 score = 1.0 - (intersection / union if union > 0 else 0)
-                        
-        #                 if score < best_score:
-        #                     best_score = score
-        #                     best_transform = np.array([x, y, z])
-        #                     best_projection = proj_mask
-        #                     best_iou = intersection / union if union > 0 else 0  # Store IoU directly
-        pers_end_time = time.perf_counter()
-        print(f"Perspective Optimization took {pers_end_time - pers_start_time:.4f} seconds")
-        # After optimization, store final IoU
-        final_iou_scores.append(best_iou)
-        
-        print(f"Tool {idx} - Initial IoU: {initial_iou_scores[-1]:.4f}")
-        print(f"Tool {idx} - Final IoU: {best_iou:.4f}")
-        
-        # Apply best transformation
+        # FIX: derive best transform (was missing)
+        best_idx = int(np.argmin([r[0] for r in results_parallel]))
+        best_score, best_mask, best_iou = results_parallel[best_idx]
+        best_transform = np.array(params[best_idx])
+        best_projection = best_mask
+        # ...existing code...
         final_points = tool_points + best_transform
         transformed_pcd = o3d.geometry.PointCloud()
         transformed_pcd.points = o3d.utility.Vector3dVector(final_points)
@@ -432,14 +396,25 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
         initial_vis[(mask0 == 255) & initial_projections[0]] = [255, 255, 0]
         cv2.imwrite(os.path.join(output_base_dir, f"projection_comparison_initial{frame_num}.png"), initial_vis)
     
+    # NEW: write combined initial transformed point clouds before optimization
+    initial_tools_dir = os.path.join(output_base_dir, 'initial_tools')
+    os.makedirs(initial_tools_dir, exist_ok=True)
+    combined_initial = initial_transformed_pcds[0]
+    for extra_init in initial_transformed_pcds[1:]:
+        combined_initial = combined_initial + extra_init
+    o3d.io.write_point_cloud(
+        os.path.join(initial_tools_dir, f"frame_{frame_num}_combined_initial.ply"),
+        combined_initial
+    )
+
     return transformed_pcds, initial_iou_scores, final_iou_scores
 
 if __name__ == "__main__":
     # Define base directories
-    pcd_base_dir = "/workspace/EndoLRMGS/endonerf/pulling/zxhezexin/openlrm-mix-base-1.1/meshes"
-    depth_base_dir = "/workspace/EndoLRMGS/endonerf/pulling/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
-    mask_base_dir = "/workspace/dataset/endolrm_dataset/endonerf/cutting_tissues_twice/Annotations"
-    output_base_dir = "/workspace/EndoLRMGS/endonerf/cutting/zxhezexin"
+    pcd_base_dir = "/workspace/EndoLRMGS/endonerf/cutting/zxhezexin/openlrm-mix-base-1.1/meshes"
+    depth_base_dir = "/workspace/EndoLRMGS/endonerf/cutting/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
+    mask_base_dir = "/workspace/datasets/endolrm_dataset/endonerf/cutting_tissues_twice/Annotations"
+    output_base_dir = "/workspace/EndoLRMGS/endonerf/cutting/postprocessed_tools"
 
     # Create output folder if it doesn't exist
     os.makedirs(output_base_dir, exist_ok=True)

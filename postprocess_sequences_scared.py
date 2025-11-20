@@ -199,7 +199,7 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
     
     # Load mask and depth
     mask_rgb = cv2.imread(mask_path)
-    depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED) #/ 1000.0  # Convert mm to meters
+    depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED) / 256.0  
     print("Depth max:", np.max(depth), "min:", np.min(depth))
     # Find unique colors in mask
     unique_colors = np.unique(mask_rgb.reshape(-1, 3), axis=0)
@@ -219,10 +219,10 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
     
     transformed_pcds = []
     results = []
-    initial_iou_scores = []  # Add this line
-    final_iou_scores = []    # Add this line
-    initial_projections = [] # Add this line
-    initial_transformed_pcds = []
+    initial_iou_scores = []
+    final_iou_scores = []
+    initial_projections = []
+    initial_transformed_pcds = []  # NEW: store initial transformed point clouds before scaling/optimization
 
     for pcd, mask, idx in tool_pairs:
         # 1. Transform points
@@ -230,12 +230,11 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
         colors = np.asarray(pcd.colors)
         transformed_points = transform_points(points, T_source, T_target)
         
-        # Create transformed point cloud
-        transformed_pcd = o3d.geometry.PointCloud()
-        transformed_pcd.points = o3d.utility.Vector3dVector(transformed_points)
-        transformed_pcd.colors = o3d.utility.Vector3dVector(colors)
-
-        initial_transformed_pcds.append(transformed_pcd)
+        # NEW: Save initial (pre-scale, pre-optimization) transformed point cloud
+        init_pcd = o3d.geometry.PointCloud()
+        init_pcd.points = o3d.utility.Vector3dVector(transformed_points)
+        init_pcd.colors = o3d.utility.Vector3dVector(colors)
+        initial_transformed_pcds.append(init_pcd)
         
         # 2. Get background points from depth
         _, bg_points = process_masked_region(mask, depth, K1)
@@ -363,11 +362,14 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
         print(f"Tool {idx} - Best position: X={best_transform[0]:.4f}, Y={best_transform[1]:.4f}, Z={best_transform[2]:.4f}")
         print(f"Tool {idx} - Best IoU score: {1-best_score:.4f}")
 
-        # Save individual and combined initial transformed point clouds
+    # NEW: Save combined initial transformed point clouds before optimization
     initial_tools_dir = os.path.join(output_base_dir.replace('postprocessed_tools', 'initial_tools'))
     os.makedirs(initial_tools_dir, exist_ok=True)
+    combined_initial = initial_transformed_pcds[0]
+    for extra_init in initial_transformed_pcds[1:]:
+        combined_initial = combined_initial + extra_init
     initial_combined_path = os.path.join(initial_tools_dir, f"frame_{frame_num}_combined_initial.ply")
-    o3d.io.write_point_cloud(initial_combined_path, initial_transformed_pcds[0])
+    o3d.io.write_point_cloud(initial_combined_path, combined_initial)
 
     # Create visualization
     if len(results) >= 2:
@@ -414,9 +416,9 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
 if __name__ == "__main__":
     # Define base directories
     pcd_base_dir = "/workspace/EndoLRMGS/scared/zxhezexin/openlrm-mix-base-1.1/meshes"
-    depth_base_dir = "/workspace/EndoLRMGS/scared/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
+    depth_base_dir = "/workspace/datasets/endolrm_dataset/scared/dataset_6/data/depth"
     mask_base_dir = "/workspace/datasets/endolrm_dataset/scared/dataset_6/data/Annotations"
-    output_base_dir = "/workspace/EndoLRMGS/scared/zxhezexin/postprocessed_tools"
+    output_base_dir = "/workspace/EndoLRMGS/scared/postprocessed_tools"
 
     # Create output folder if it doesn't exist
     os.makedirs(output_base_dir, exist_ok=True)
@@ -429,7 +431,8 @@ if __name__ == "__main__":
     
     # Process each pair
     for frame_num, pcd0_path, pcd1_path in pointcloud_pairs:
-        depth_path = os.path.join(depth_base_dir, f"frame_data{frame_num}_endo_depth.png")
+        # depth_path = os.path.join(depth_base_dir, f"frame_data{frame_num}_endo_depth.png")
+        depth_path = os.path.join(depth_base_dir, f"frame_data{frame_num}.png")
         mask_path = os.path.join(mask_base_dir, f"frame_data{frame_num}.png")
         output_path = os.path.join(output_base_dir, f"frame_{frame_num}_combined.ply")
         

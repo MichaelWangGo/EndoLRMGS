@@ -222,6 +222,7 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
     initial_iou_scores = []  # Add this line
     final_iou_scores = []    # Add this line
     initial_projections = [] # Add this line
+    initial_transformed_pcds = []  # Add this line to store initial transformed point clouds
 
     for pcd, mask, idx in tool_pairs:
         # 1. Transform points
@@ -230,10 +231,11 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
         colors = np.asarray(pcd.colors)
         transformed_points = transform_points(points, T_source, T_target)
         
-        # Create transformed point cloud
-        transformed_pcd = o3d.geometry.PointCloud()
-        transformed_pcd.points = o3d.utility.Vector3dVector(transformed_points)
-        transformed_pcd.colors = o3d.utility.Vector3dVector(colors)
+        # Create transformed point cloud and save to initial list
+        transformed_pcd_initial = o3d.geometry.PointCloud()
+        transformed_pcd_initial.points = o3d.utility.Vector3dVector(transformed_points)
+        transformed_pcd_initial.colors = o3d.utility.Vector3dVector(colors)
+        initial_transformed_pcds.append(transformed_pcd_initial)
         
         # 2. Get background points from depth
         _, bg_points = process_masked_region(mask, depth, K1)
@@ -335,7 +337,7 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
                             best_score = score
                             best_transform = np.array([x, y, z])
                             best_projection = proj_mask
-                            best_iou = intersection / union if union > 0 else 0  # Store IoU directly
+                            best_iou = intersection / union if union > 0 else 0 # Store IoU directly
         end_time = time.perf_counter()
         print(f"Optimization took {end_time - start_time:.4f} seconds")
         # After optimization, store final IoU
@@ -359,6 +361,20 @@ def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, f
         print(f"Tool {idx} - Scale factor: {scale_factor:.4f}")
         print(f"Tool {idx} - Best position: X={best_transform[0]:.4f}, Y={best_transform[1]:.4f}, Z={best_transform[2]:.4f}")
         print(f"Tool {idx} - Best IoU score: {1-best_score:.4f}")
+    
+    # Save combined initial point clouds before final visualization
+    initial_tools_dir = os.path.join(output_base_dir.replace('postprocessed_tools', 'initial_tools'))
+    os.makedirs(initial_tools_dir, exist_ok=True)
+    
+    if len(initial_transformed_pcds) >= 2:
+        combined_initial = initial_transformed_pcds[0] + initial_transformed_pcds[1]
+    else:
+        combined_initial = initial_transformed_pcds[0]
+    
+    o3d.io.write_point_cloud(
+        os.path.join(initial_tools_dir, f"frame_{frame_num}_combined_initial.ply"),
+        combined_initial
+    )
     
     # Create visualization
     if len(results) >= 2:
@@ -406,8 +422,8 @@ if __name__ == "__main__":
     # Define base directories
     pcd_base_dir = "/workspace/EndoLRMGS/endonerf/pulling/zxhezexin/openlrm-mix-base-1.1/meshes"
     depth_base_dir = "/workspace/EndoLRMGS/endonerf/pulling/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
-    mask_base_dir = "/workspace/dataset/endolrm_dataset/endonerf/pulling/Annotations"
-    output_base_dir = "/workspace/EndoLRMGS/endonerf/pulling/zxhezexin"
+    mask_base_dir = "/workspace/datasets/endolrm_dataset/endonerf/pulling/Annotations"
+    output_base_dir = "/workspace/EndoLRMGS/endonerf/pulling/postprocessed_tools"
     
     # Create output folder if it doesn't exist
     os.makedirs(output_base_dir, exist_ok=True)
