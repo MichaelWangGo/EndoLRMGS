@@ -323,18 +323,18 @@ def calculate_masked_metrics(image1, image2, mask, lpips_model=lpips.LPIPS(net='
 
 def main():
     # Paths
-    pointcloud_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/v3/zxhezexin/postprocessed_tools')
-    frame_data_file = Path('/workspace/datasets/endolrm_dataset/stereomis/p2_6/frame_data.json')
+    pointcloud_dir = Path('/workspace/EndoLRMGS/stereomis/p1/initial_tools')
+    frame_data_file = Path('/workspace/datasets/endolrm_dataset/stereomis/p1/frame_data.json')
 
-    left_mask_dir = Path('/workspace/datasets/endolrm_dataset/stereomis/p2_6/binary_mask_deva')
-    left_gt_image_dir = Path('/workspace/datasets/endolrm_dataset/stereomis/p2_6/left_finalpass')
-    right_mask_dir = Path('/workspace/Tracking-Anything-with-DEVA/output/stereomis/base/right_view/binary_mask_deva')
-    right_gt_image_dir = Path('/workspace/datasets/endolrm_dataset/stereomis/p2_6/right_finalpass')
+    left_mask_dir = Path('/workspace/datasets/endolrm_dataset/stereomis/p1/binary_mask_deva')
+    left_gt_image_dir = Path('/workspace/datasets/endolrm_dataset/stereomis/p1/left_finalpass')
+    right_mask_dir = Path('/workspace/Tracking-Anything-with-DEVA/output/stereomis/p1/right_view/binary_mask_deva')
+    right_gt_image_dir = Path('/workspace/datasets/endolrm_dataset/stereomis/p1/right_finalpass')
 
-    left_output_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/v3/left_view_reprojected_images')
-    right_output_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/v3/right_view_reprojected_images')
-    left_vis_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/v3/left_view_iou_visualizations')
-    right_vis_dir = Path('/workspace/EndoLRMGS/ablation_study/stereomis/v3/right_view_iou_visualizations')
+    left_output_dir = Path('/workspace/EndoLRMGS/stereomis/p1/init_left_view_reprojected_images')
+    right_output_dir = Path('/workspace/EndoLRMGS/stereomis/p1/init_right_view_reprojected_images')
+    left_vis_dir = Path('/workspace/EndoLRMGS/stereomis/p1/init_left_view_iou_visualizations')
+    right_vis_dir = Path('/workspace/EndoLRMGS/stereomis/p1/init_right_view_iou_visualizations')
     
     left_output_dir.mkdir(exist_ok=True)
     right_output_dir.mkdir(exist_ok=True)

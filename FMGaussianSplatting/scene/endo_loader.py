@@ -4,17 +4,17 @@ warnings.filterwarnings("ignore")
 
 import json
 import os
-import random
+# import random
 import os.path as osp
 
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
-from scene.cameras import Camera
+from FMGaussianSplatting.scene.cameras import Camera
 from typing import NamedTuple
-from torch.utils.data import Dataset
-from utils.general_utils import PILtoTorch, percentile_torch
-from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
+# from torch.utils.data import Dataset
+# from FMGaussianSplatting.utils.general_utils import PILtoTorch, percentile_torch
+from FMGaussianSplatting.utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
 import glob
 from torchvision import transforms as T
 import open3d as o3d
@@ -23,7 +23,7 @@ import imageio.v2 as iio
 import cv2
 import torch
 import fpsample
-from torchvision import transforms
+# from torchvision import transforms
 from dataclasses import dataclass
 
 
@@ -813,13 +813,13 @@ class Stereomis_Dataset(object):
         # Check for masks
         if os.path.exists(os.path.join(self.root_dir, "binary_mask_deva")):
             self.masks_paths = sorted(glob.glob(os.path.join(self.root_dir, "binary_mask_deva", "*.png")))
-            print(f"Loaded masks from binary_mask_deva: {len(self.masks_paths)} files")
+            print(f"Loaded masks from {self.masks_paths[0]} ...: {len(self.masks_paths)} files")
         else:
             self.masks_paths = None
             print("No masks directory found, will use full image")
         
         # Load camera poses from camera_poses.txt
-        # Format: frame_name r11 r12 r13 tx r21 r22 r23 ty r31 r32 r33 tz 0 0 0 1
+        # Format: tx ty tz qx qy qz qw (translation + quaternion)
         poses_file = os.path.join(self.root_dir, "camera_poses.txt")
         pose_data = []
         has_poses = False
@@ -829,19 +829,21 @@ class Stereomis_Dataset(object):
             with open(poses_file, 'r') as f:
                 for line in f:
                     parts = line.strip().split()
-                    if len(parts) >= 16:  # frame_name + 16 values (4x4 matrix)
-                        # Parse the 4x4 transformation matrix
-                        # Format: r11 r12 r13 tx r21 r22 r23 ty r31 r32 r33 tz 0 0 0 1
+                    if len(parts) >= 7:  # tx ty tz qx qy qz qw
                         try:
-                            values = [float(p) for p in parts[1:]]  # Skip frame name
+                            values = [float(p) for p in parts[:7]]  # Take first 7 values
                             
-                            # Construct c2w matrix from row-major order
-                            c2w = np.array([
-                                [values[0], values[1], values[2], values[3]],   # r11 r12 r13 tx
-                                [values[4], values[5], values[6], values[7]],   # r21 r22 r23 ty
-                                [values[8], values[9], values[10], values[11]], # r31 r32 r33 tz
-                                [values[12], values[13], values[14], values[15]] # 0   0   0   1
-                            ])
+                            # Extract translation and quaternion
+                            tx, ty, tz = values[0], values[1], values[2]
+                            qx, qy, qz, qw = values[3], values[4], values[5], values[6]
+                            
+                            # Convert quaternion to rotation matrix
+                            R = self.quaternion_to_rotation_matrix([qx, qy, qz, qw])
+                            
+                            # Construct c2w matrix
+                            c2w = np.eye(4)
+                            c2w[:3, :3] = R
+                            c2w[:3, 3] = [tx, ty, tz]
                             
                             pose_data.append(c2w)
                         except (ValueError, IndexError) as e:

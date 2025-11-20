@@ -1,8 +1,8 @@
 ModelParams = dict(
     extra_mark = 'stereomis',
     camera_extent = 10,
-    source_path = '/workspace/datasets/endolrm_dataset/stereomis/p2_6', # Path to dataset
-    model_path = './exps/stereomis/ablation_study/v5', # Path to save checkpoints and logs
+    source_path = '/workspace/datasets/endolrm_dataset/stereomis/p2_0', # Path to dataset
+    model_path = './exps/stereomis/p2_0', # Path to save checkpoints and logs
     mode = 'binocular',
     sh_degree = 3,
 )

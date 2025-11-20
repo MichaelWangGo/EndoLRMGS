@@ -11,7 +11,7 @@ try:
     import cupy as cp
     CUDA_AVAILABLE = True
     # Set CUDA device
-    cp.cuda.Device(0).use()
+    cp.cuda.Device(1).use()
     print("CUDA acceleration enabled on NVIDIA RTX A6000")
 except ImportError:
     CUDA_AVAILABLE = False
@@ -210,30 +210,46 @@ def process_masked_region(mask, depth, K, use_cuda=True):
 
 
 def get_pointcloud_pairs(pcd_dir):
-    """Get all pairs of point clouds from directory"""
+    """Get all groups of point clouds (up to 3 masks) from directory"""
     # Define possible patterns for mask0 files
     patterns = [
         "*_mask0.ply",
         "*.color_mask0.ply"
     ]
     
-    pairs = []
+    groups = []
     for pattern in patterns:
         pcd0_files = sorted(glob.glob(os.path.join(pcd_dir, pattern)))
         
         for pcd0_file in pcd0_files:
             # Handle different naming formats
             if "stereomis" in pcd0_file:
-                pcd1_file = pcd0_file.replace("_mask0.ply", "_mask1.ply")
+                base_path = pcd0_file.replace("_mask0.ply", "")
                 frame_num = os.path.basename(pcd0_file).split("_")[1]
+                mask_files = [pcd0_file]
+                
+                # Check for mask1 and mask2
+                for mask_idx in [1, 2]:
+                    mask_file = f"{base_path}_mask{mask_idx}.ply"
+                    if os.path.exists(mask_file):
+                        mask_files.append(mask_file)
+                
             elif "endonerf" in pcd0_file:
-                pcd1_file = pcd0_file.replace(".color_mask0.ply", ".color_mask1.ply")
+                base_path = pcd0_file.replace(".color_mask0.ply", "")
                 frame_num = os.path.basename(pcd0_file).split("-")[1].split(".")[0]
+                mask_files = [pcd0_file]
+                
+                # Check for mask1 and mask2
+                for mask_idx in [1, 2]:
+                    mask_file = f"{base_path}.color_mask{mask_idx}.ply"
+                    if os.path.exists(mask_file):
+                        mask_files.append(mask_file)
             
-            if os.path.exists(pcd1_file):
-                pairs.append((frame_num, pcd0_file, pcd1_file))
+            # Only add if we have at least 2 masks
+            if len(mask_files) >= 2:
+                groups.append((frame_num, mask_files))
     
-    return sorted(pairs)
+    return sorted(groups)
 
 
 def get_z_at_xy(bg_points, target_x, target_y):
@@ -255,249 +271,201 @@ def get_z_at_xy(bg_points, target_x, target_y):
         return int(bg_points[nearest_idx][2])
 
 
-def process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, frame_num):
-    """Process a sequence of point clouds with transformations and scaling"""
+def process_sequence(pcd_paths, depth_path, mask_path, output_path, frame_num):
+    """Process a sequence of 2 or 3 point clouds with transformations and scaling."""
     # Load point clouds
-    pcd0 = o3d.io.read_point_cloud(pcd0_path)
-    pcd1 = o3d.io.read_point_cloud(pcd1_path)
-
+    pcd_list = [o3d.io.read_point_cloud(p) for p in pcd_paths]
     # Load mask and depth
     mask_rgb = cv2.imread(mask_path)
     depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
-    # import ipdb; ipdb.set_trace()
-    # Find unique colors in mask
+
+    # Unique tool colors (exclude black)
     unique_colors = np.unique(mask_rgb.reshape(-1, 3), axis=0)
     unique_colors = unique_colors[~np.all(unique_colors == [0, 0, 0], axis=1)]
-    
-    # Create masks for each tool
-    mask0 = np.all(mask_rgb == unique_colors[0], axis=2).astype(np.uint8) * 255
-    mask1 = np.all(mask_rgb == unique_colors[1], axis=2).astype(np.uint8) * 255
-    
-    # Process each tool
-    tool_pairs = [
-        (pcd0, mask0, 0),
-        (pcd1, mask1, 1)
+    n_tools = min(len(pcd_list), len(unique_colors))
+    if n_tools < 2:
+        raise ValueError(f"Need ≥2 tools, got {n_tools}")
+
+    # Build binary masks per tool
+    tool_masks = [
+        (np.all(mask_rgb == unique_colors[i], axis=2).astype(np.uint8) * 255)
+        for i in range(n_tools)
     ]
-    
+
     transformed_pcds = []
     results = []
     initial_iou_scores = []
     final_iou_scores = []
     initial_projections = []
     initial_transformed_pcds = []
-    
-    for pcd, mask, idx in tool_pairs:
+
+    for tool_idx in range(n_tools):
+        pcd = pcd_list[tool_idx]
+        mask = tool_masks[tool_idx]
+
         # 1. Transform points
         points = np.asarray(pcd.points)
         colors = np.asarray(pcd.colors)
         transformed_points = transform_points(points, T_source, T_target, use_cuda=CUDA_AVAILABLE)
-        
-        # Create transformed point cloud
-        transformed_pcd = o3d.geometry.PointCloud()
-        transformed_pcd.points = o3d.utility.Vector3dVector(transformed_points)
-        transformed_pcd.colors = o3d.utility.Vector3dVector(colors)
-        
-        # Store initial transformed point cloud for later combination
-        initial_transformed_pcds.append(transformed_pcd)
-        
-        # 2. Get background points from depth
+
+        transformed_pcd_initial = o3d.geometry.PointCloud()
+        transformed_pcd_initial.points = o3d.utility.Vector3dVector(transformed_points)
+        transformed_pcd_initial.colors = o3d.utility.Vector3dVector(colors)
+        initial_transformed_pcds.append(transformed_pcd_initial)
+
+        # 2. Background points from mask & depth
         _, bg_points = process_masked_region(mask, depth, K1, use_cuda=CUDA_AVAILABLE)
-        
-        # 3. Calculate orthographic matrix and scale factor
+
+        # 3. Ortho matrix & scale
         ortho_matrix = calculate_orthographic_matrix(bg_points, use_cuda=CUDA_AVAILABLE)
         scale_factor, _, _ = calculate_scale_factor(bg_points, transformed_points, ortho_matrix, use_cuda=CUDA_AVAILABLE)
-        
-        # 4. Scale the transformed points
         scaled_points = transformed_points * scale_factor
 
-        # Calculate initial IoU before optimization
+        # Initial IoU
         height, width = mask.shape
-        tool_points = scaled_points
-        mask_binary = mask == 255
-        
-        # Project initial points
-        initial_projected_points = perspective_project(tool_points, K1, use_cuda=CUDA_AVAILABLE)
-        initial_proj_mask = np.zeros((height, width), dtype=bool)
-        valid_points = (initial_projected_points[:, 0] >= 0) & (initial_projected_points[:, 0] < width) & \
-                      (initial_projected_points[:, 1] >= 0) & (initial_projected_points[:, 1] < height)
-        
-        if np.any(valid_points):
-            coords = initial_projected_points[valid_points].astype(int)
-            initial_proj_mask[coords[:, 1], coords[:, 0]] = True
-            initial_proj_mask = cv2.dilate(initial_proj_mask.astype(np.uint8), np.ones((3,3), np.uint8)).astype(bool)
-            
-            # Calculate initial IoU
-            initial_intersection = np.sum(initial_proj_mask & mask_binary)
-            initial_union = np.sum(initial_proj_mask | mask_binary)
-            initial_iou = initial_intersection / initial_union if initial_union > 0 else 0
-            initial_iou_scores.append(initial_iou)
-            initial_projections.append(initial_proj_mask)
+        mask_binary = (mask == 255)
+        proj_pts_init = perspective_project(scaled_points, K1, use_cuda=CUDA_AVAILABLE)
+        init_mask = np.zeros((height, width), dtype=bool)
+        valid = (
+            (proj_pts_init[:, 0] >= 0) & (proj_pts_init[:, 0] < width) &
+            (proj_pts_init[:, 1] >= 0) & (proj_pts_init[:, 1] < height)
+        )
+        if np.any(valid):
+            coords = proj_pts_init[valid].astype(int)
+            init_mask[coords[:, 1], coords[:, 0]] = True
+            init_mask = cv2.dilate(init_mask.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
+            inter = np.sum(init_mask & mask_binary)
+            union = np.sum(init_mask | mask_binary)
+            initial_iou = inter / union if union > 0 else 0.0
         else:
-            initial_iou_scores.append(0.0)
-            initial_projections.append(np.zeros((height, width), dtype=bool))
-            
-        # Optimize position using perspective projection with CUDA acceleration
-        height, width = mask.shape
-        tool_points = scaled_points
-        mask_binary = mask == 255
-        gt_area = np.sum(mask_binary)
-        
-        # Optimize search ranges based on point cloud dimensions
-        if CUDA_AVAILABLE:
-            tool_points_gpu = cp.asarray(tool_points)
-            points_range = cp.asnumpy(cp.ptp(tool_points_gpu, axis=0))
-            max_z_idx = int(cp.argmax(tool_points_gpu[:, 2]))
-        else:
-            points_range = np.ptp(tool_points, axis=0)
-            max_z_idx = np.argmax(tool_points[:, 2])
-            
-        x_range = points_range[0]
-        y_range = points_range[1]
-        
-        # Get maximum z value and its index
-        max_point = tool_points[max_z_idx]
+            initial_iou = 0.0
+        initial_iou_scores.append(initial_iou)
+        initial_projections.append(init_mask)
+
+        # Optimization search ranges
+        pts_range = np.ptp(scaled_points, axis=0)
+        max_z_idx = np.argmax(scaled_points[:, 2])
+        max_point = scaled_points[max_z_idx]
         x_coord, y_coord, z_coord_tools = max_point
-        match_idx = get_z_at_xy(bg_points, x_coord, y_coord)
-        z_coord_bg = bg_points[match_idx][-1]
-        z_range = z_coord_bg - z_coord_tools
-        
-        x_translations = np.linspace(-x_range/2, x_range/2, 10)
-        y_translations = np.linspace(-y_range/2, y_range/2, 10)
+        # Match depth (fallback nearest if exact not found)
+        match_z = get_z_at_xy(bg_points, x_coord, y_coord)
+        z_range = match_z - z_coord_tools
+
+        x_translations = np.linspace(-pts_range[0] / 2, pts_range[0] / 2, 10)
+        y_translations = np.linspace(-pts_range[1] / 2, pts_range[1] / 2, 10)
         z_translations = np.linspace(0, z_range, 20)
-        
+
         best_score = float('inf')
-        best_transform = None
-        best_projection = None
-        best_iou = 0
-        
-        # GPU-accelerated position optimization
+        best_transform = np.zeros(3, dtype=np.float32)
+        best_projection = np.zeros((height, width), dtype=bool)
+        best_iou = 0.0
+
         if CUDA_AVAILABLE:
-            tool_points_gpu = cp.asarray(tool_points)
-            K1_gpu = cp.asarray(K1)
-            mask_binary_gpu = cp.asarray(mask_binary)
-            
-            for x in x_translations:
-                for y in y_translations:
-                    for z in z_translations:
-                        # Apply translation on GPU
-                        translated_points = tool_points_gpu + cp.array([x, y, z])
-                        
-                        # Project points efficiently on GPU
-                        points_2d = K1_gpu @ translated_points.T
-                        points_2d = points_2d / points_2d[2]
-                        projected_points = cp.asnumpy(points_2d[:2].T)
-                        
-                        # Create and evaluate projection mask
-                        proj_mask = np.zeros((height, width), dtype=bool)
-                        valid_points = (projected_points[:, 0] >= 0) & (projected_points[:, 0] < width) & \
-                                     (projected_points[:, 1] >= 0) & (projected_points[:, 1] < height)
-                        
-                        if np.any(valid_points):
-                            coords = projected_points[valid_points].astype(int)
-                            proj_mask[coords[:, 1], coords[:, 0]] = True
-                            proj_mask = cv2.dilate(proj_mask.astype(np.uint8), np.ones((3,3), np.uint8)).astype(bool)
-                            
-                            # Compute IoU
-                            intersection = np.sum(proj_mask & mask_binary)
-                            union = np.sum(proj_mask | mask_binary)
-                            iou = intersection / union if union > 0 else 0
-                            score = 1.0 - iou
-                            
-                            if score < best_score:
-                                best_score = score
-                                best_transform = np.array([x, y, z])
-                                best_projection = proj_mask
-                                best_iou = iou
+            tool_pts_gpu = cp.asarray(scaled_points)
+            K_gpu = cp.asarray(K1)
+            mask_bin_gpu = cp.asarray(mask_binary)
+            for dx in x_translations:
+                for dy in y_translations:
+                    for dz in z_translations:
+                        translated = tool_pts_gpu + cp.array([dx, dy, dz])
+                        proj = K_gpu @ translated.T
+                        proj = proj / proj[2]
+                        proj2d = cp.asnumpy(proj[:2].T)
+                        pmask = np.zeros((height, width), dtype=bool)
+                        v = (
+                            (proj2d[:, 0] >= 0) & (proj2d[:, 0] < width) &
+                            (proj2d[:, 1] >= 0) & (proj2d[:, 1] < height)
+                        )
+                        if not np.any(v):
+                            continue
+                        c = proj2d[v].astype(int)
+                        pmask[c[:, 1], c[:, 0]] = True
+                        pmask = cv2.dilate(pmask.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
+                        inter = np.sum(pmask & mask_binary)
+                        union = np.sum(pmask | mask_binary)
+                        iou = inter / union if union > 0 else 0.0
+                        score = 1.0 - iou
+                        if score < best_score:
+                            best_score = score
+                            best_transform = np.array([dx, dy, dz])
+                            best_projection = pmask
+                            best_iou = iou
         else:
-            # CPU fallback
-            for x in x_translations:
-                for y in y_translations:
-                    for z in z_translations:
-                        # Apply translation
-                        translated_points = tool_points + np.array([x, y, z])
-                        
-                        # Project points efficiently
-                        projected_points = perspective_project(translated_points, K1, use_cuda=False)
-                        
-                        # Create and evaluate projection mask
-                        proj_mask = np.zeros((height, width), dtype=bool)
-                        valid_points = (projected_points[:, 0] >= 0) & (projected_points[:, 0] < width) & \
-                                     (projected_points[:, 1] >= 0) & (projected_points[:, 1] < height)
-                        
-                        if np.any(valid_points):
-                            coords = projected_points[valid_points].astype(int)
-                            proj_mask[coords[:, 1], coords[:, 0]] = True
-                            proj_mask = cv2.dilate(proj_mask.astype(np.uint8), np.ones((3,3), np.uint8)).astype(bool)
-                            
-                            # Compute IoU
-                            intersection = np.sum(proj_mask & mask_binary)
-                            union = np.sum(proj_mask | mask_binary)
-                            iou = intersection / union if union > 0 else 0
-                            score = 1.0 - iou
-                            
-                            if score < best_score:
-                                best_score = score
-                                best_transform = np.array([x, y, z])
-                                best_projection = proj_mask
-                                best_iou = iou
-        
-        # Apply best transformation
-        final_points = tool_points + best_transform
+            for dx in x_translations:
+                for dy in y_translations:
+                    for dz in z_translations:
+                        translated = scaled_points + np.array([dx, dy, dz])
+                        proj2d = perspective_project(translated, K1, use_cuda=False)
+                        pmask = np.zeros((height, width), dtype=bool)
+                        v = (
+                            (proj2d[:, 0] >= 0) & (proj2d[:, 0] < width) &
+                            (proj2d[:, 1] >= 0) & (proj2d[:, 1] < height)
+                        )
+                        if not np.any(v):
+                            continue
+                        c = proj2d[v].astype(int)
+                        pmask[c[:, 1], c[:, 0]] = True
+                        pmask = cv2.dilate(pmask.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
+                        inter = np.sum(pmask & mask_binary)
+                        union = np.sum(pmask | mask_binary)
+                        iou = inter / union if union > 0 else 0.0
+                        score = 1.0 - iou
+                        if score < best_score:
+                            best_score = score
+                            best_transform = np.array([dx, dy, dz])
+                            best_projection = pmask
+                            best_iou = iou
+
+        final_points = scaled_points + best_transform
         transformed_pcd = o3d.geometry.PointCloud()
         transformed_pcd.points = o3d.utility.Vector3dVector(final_points)
-        transformed_pcd.colors = o3d.utility.Vector3dVector(np.asarray(pcd.colors))
-        
+        transformed_pcd.colors = o3d.utility.Vector3dVector(colors)
         transformed_pcds.append(transformed_pcd)
         results.append((best_transform[0], best_transform[1], best_transform[2], best_projection))
-        
         final_iou_scores.append(best_iou)
-        
-        print(f"Tool {idx} - Initial IoU: {initial_iou_scores[-1]:.4f}")
-        print(f"Tool {idx} - Final IoU: {best_iou:.4f}")
-    
-    # Save individual and combined initial transformed point clouds
+
+        print(f"Tool {tool_idx} - Initial IoU: {initial_iou:.4f} | Final IoU: {best_iou:.4f}")
+
+    # Save combined initial point clouds
     initial_tools_dir = os.path.join(output_base_dir.replace('postprocessed_tools', 'initial_tools'))
     os.makedirs(initial_tools_dir, exist_ok=True)
-    
-    if len(initial_transformed_pcds) >= 2:
-        # # Save individual initial transformed point clouds
-        # for idx, initial_pcd in enumerate(initial_transformed_pcds):
-        #     initial_output_path = os.path.join(initial_tools_dir, f"frame_{frame_num}_tool{idx}_initial.ply")
-        #     o3d.io.write_point_cloud(initial_output_path, initial_pcd)
-        
-        # Combine and save initial transformed point clouds
-        combined_initial_pcd = initial_transformed_pcds[0] + initial_transformed_pcds[1]
-        initial_combined_path = os.path.join(initial_tools_dir, f"frame_{frame_num}_combined_initial.ply")
-        o3d.io.write_point_cloud(initial_combined_path, combined_initial_pcd)
-    
-    # Create visualization
-    if len(results) >= 2:
-        final_vis = np.zeros((height, width, 3), dtype=np.uint8)
-        final_vis[mask0 == 255] = [255, 0, 0]
-        final_vis[mask1 == 255] = [255, 0, 0]
-        final_vis[results[0][3]] = [0, 255, 0]
-        final_vis[results[1][3]] = [0, 255, 0]
-        final_vis[(mask0 == 255) & results[0][3]] = [255, 255, 0]
-        final_vis[(mask1 == 255) & results[1][3]] = [255, 255, 0]
-        
-        cv2.imwrite(os.path.join(output_base_dir, f"projection_comparison_final{frame_num}.png"), final_vis)
-    
-    # After processing both tools, create and save initial projection visualization
+    combined_initial = initial_transformed_pcds[0]
+    for extra in initial_transformed_pcds[1:]:
+        combined_initial = combined_initial + extra
+    o3d.io.write_point_cloud(os.path.join(initial_tools_dir, f"frame_{frame_num}_combined_initial.ply"), combined_initial)
+
+    # Initial projection visualization
+    height, width = tool_masks[0].shape
     if len(initial_projections) >= 2:
-        initial_vis = np.zeros((height, width, 3), dtype=np.uint8)
-        initial_vis[mask0 == 255] = [255, 0, 0]      # Ground truth tool1 in red
-        initial_vis[mask1 == 255] = [255, 0, 0]      # Ground truth tool2 in blue
-        initial_vis[initial_projections[0]] = [0, 255, 0]    # Initial projection tool1 in green
-        initial_vis[initial_projections[1]] = [0, 255, 0]  # Initial projection tool2 in cyan
-        initial_vis[(mask0 == 255) & initial_projections[0]] = [255, 255, 0]   # Overlap tool1 in yellow
-        initial_vis[(mask1 == 255) & initial_projections[1]] = [255, 255, 0] # Overlap tool2 in white
-        
-        cv2.imwrite(os.path.join(output_base_dir, f"projection_comparison_initial{frame_num}.png"), initial_vis)
-    
-    # Instead of saving individual clouds, combine them
-    combined_pcd = transformed_pcds[0] + transformed_pcds[1]
-    o3d.io.write_point_cloud(output_path, combined_pcd)
-    
+        init_vis = np.zeros((height, width, 3), dtype=np.uint8)
+        # Ground truth in red
+        for m in tool_masks:
+            init_vis[m == 255] = [255, 0, 0]
+        # Projections in green; overlaps yellow
+        for i, proj in enumerate(initial_projections):
+            init_vis[proj] = [0, 255, 0]
+            init_vis[(tool_masks[i] == 255) & proj] = [255, 255, 0]
+        cv2.imwrite(os.path.join(output_base_dir, f"projection_comparison_initial{frame_num}.png"), init_vis)
+
+    # Final projection visualization (use all masks and projections)
+    if len(results) >= 1:
+        final_vis = np.zeros((height, width, 3), dtype=np.uint8)
+        # Draw all GT masks in red
+        for m in tool_masks:
+            final_vis[m == 255] = [255, 0, 0]
+        # Draw all projections in green; overlaps become yellow
+        for i, res in enumerate(results):
+            proj = res[3]
+            final_vis[proj] = [0, 255, 0]
+            final_vis[(tool_masks[i] == 255) & proj] = [255, 255, 0]
+        cv2.imwrite(os.path.join(output_base_dir, f"projection_comparison_final{frame_num}.png"), final_vis)
+
+    # Combined final cloud
+    combined_final = transformed_pcds[0]
+    for extra in transformed_pcds[1:]:
+        combined_final = combined_final + extra
+    o3d.io.write_point_cloud(output_path, combined_final)
+
     return transformed_pcds, initial_iou_scores, final_iou_scores
 
 # Define camera matrices and parameters
@@ -519,48 +487,60 @@ K1 = np.array([
     [1033.894287109375, 0.0, 604.578857421875],
     [0.0, 1033.7147216796875, 514.9761962890625],
     [0.0, 0.0, 1.0]
-])
+]) # p2_0
+
+# K1 = np.array([
+#     [1039.6275634765625, 0.0, 596.5435180664062],
+#     [0.0, 1039.4129638671875, 502.235595703125],
+#     [0.0, 0.0, 1.0]
+# ]) # p1
+
+# K1 = np.array([
+#     [1042.4930419921875, 0.0, 608.7192993164062],
+#     [0.0, 1042.2545166015625, 489.70538330078125],
+#     [0.0, 0.0, 1.0]
+# ]) # p2_3
 
 
 if __name__ == "__main__":
     # # Define base directories
-    pcd_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/v5/zxhezexin/openlrm-mix-base-1.1/meshes"
-    depth_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/v5/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
-    mask_base_dir = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/Annotations_v5"
-    output_base_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/v5/zxhezexin/postprocessed_tools"
+    pcd_base_dir = "/workspace/EndoLRMGS/stereomis/p2_0/zxhezexin/openlrm-mix-base-1.1/meshes"
+    depth_base_dir = "/workspace/EndoLRMGS/stereomis/p2_0/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
+    mask_base_dir = "/workspace/datasets/endolrm_dataset/stereomis/p2_0/Annotations"
+    output_base_dir = "/workspace/EndoLRMGS/stereomis/p2_0/postprocessed_tools"
 
     # Create output folder if it doesn't exist
     os.makedirs(output_base_dir, exist_ok=True)
     
     # Get all pairs of point clouds
     pointcloud_pairs = get_pointcloud_pairs(pcd_base_dir)
-    
+
     # Create lists to store results
     all_results = []
     
     # Process each pair
-    for frame_num, pcd0_path, pcd1_path in pointcloud_pairs:
-        # import ipdb; ipdb.set_trace()
+    for frame_num, pcd_paths in pointcloud_pairs:
         depth_path = os.path.join(depth_base_dir, f"frame_{frame_num}_endo_depth.png")
+        # depth_path = os.path.join(depth_base_dir, f"frame_{frame_num}.png")
         mask_path = os.path.join(mask_base_dir, f"frame_{frame_num}.png")
         output_path = os.path.join(output_base_dir, f"frame_{frame_num}_combined.ply")
-        
-        if os.path.exists(depth_path) and os.path.exists(mask_path):
-            print(f"Processing frame {frame_num}...")
-            try:
-                final_pcds, initial_ious, final_ious = process_sequence(pcd0_path, pcd1_path, depth_path, mask_path, output_path, frame_num)
-                all_results.append({
-                    'frame': frame_num,
-                    'tool1_initial_iou': initial_ious[0],
-                    'tool2_initial_iou': initial_ious[1],
-                    'tool1_final_iou': final_ious[0],
-                    'tool2_final_iou': final_ious[1]
-                })
-                print(f"Successfully processed frame {frame_num}")
-            except Exception as e:
-                print(f"Error processing frame {frame_num}: {e}")
-        else:
+        if not (os.path.exists(depth_path) and os.path.exists(mask_path)):
             print(f"Missing depth or mask file for frame {frame_num}")
+            continue
+        if len(pcd_paths) < 2:
+            print(f"Skipping frame {frame_num}, only {len(pcd_paths)} point clouds")
+            continue
+        print(f"Processing frame {frame_num} with {len(pcd_paths)} tools...")
+        try:
+            final_pcds, initial_ious, final_ious = process_sequence(pcd_paths, depth_path, mask_path, output_path, frame_num)
+            result_row = {'frame': frame_num}
+            for i in range(len(initial_ious)):
+                result_row[f'tool{i+1}_initial_iou'] = initial_ious[i]
+                result_row[f'tool{i+1}_final_iou'] = final_ious[i]
+            all_results.append(result_row)
+            print(f"Successfully processed frame {frame_num}")
+        except Exception as e:
+            print(f"Error processing frame {frame_num}: {e}")
     
     # Save results to CSV
     results_df = pd.DataFrame(all_results)

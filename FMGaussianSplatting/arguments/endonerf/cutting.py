@@ -1,7 +1,7 @@
 ModelParams = dict(
     extra_mark = 'endonerf',
     camera_extent = 10,
-    source_path = '/workspace/dataset/endolrm_dataset/endonerf/cutting_tissues_twice',
+    source_path = '/workspace/datasets/endolrm_dataset/endonerf/cutting_tissues_twice',
     model_path = '/workspace/EndoLRMGS/exps/endonerf/cutting',
     mode = 'binocular',
     sh_degree = 3,

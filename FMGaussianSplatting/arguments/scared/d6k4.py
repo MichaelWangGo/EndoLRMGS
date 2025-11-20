@@ -1,16 +1,20 @@
 ModelParams = dict(
     extra_mark = 'scared',
     no_fine=False,
-    init_pts=30_000
+    init_pts=30_000,
+    source_path = '/workspace/datasets/endolrm_dataset/scared/dataset_6',
+    model_path = './exps/scared/d6k4',
+    mode = 'binocular',
+    sh_degree = 3,
 )
 
 OptimizationParams = dict(
     coarse_iterations = 1000,
     iterations = 4000,
-    position_lr_init = 0.00016,
-    position_lr_final = 0.0000016,
-    position_lr_delay_mult = 0.01,
-    position_lr_max_steps = 2000,
+    # position_lr_init = 0.00016,
+    # position_lr_final = 0.0000016,
+    # position_lr_delay_mult = 0.01,
+    position_lr_max_steps = 4000,
     
     deformation_lr_init = 0.00016,
     deformation_lr_final = 0.0000016,
@@ -18,16 +22,17 @@ OptimizationParams = dict(
     grid_lr_init = 0.0016,
     grid_lr_final = 0.000016,
     
-    pruning_interval = 2000,
+    # pruning_interval = 2000,
+    prune_interval = 3000,
     percent_dense = 0.01,
-    opacity_reset_interval = 2000,
+    opacity_reset_interval = 4000,
 )
 
 ModelHiddenParams = dict(
     kplanes_config = {
      'grid_dimensions': 2,
      'input_coordinate_dim': 4,
-     'output_coordinate_dim': 32,
+     'output_coordinate_dim': 64,
      'resolution': [64, 64, 64, 100]
     },
     multires = [1, 2, 4, 8],
