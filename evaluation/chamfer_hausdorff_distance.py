@@ -61,7 +61,7 @@ def reconstruct_tools_from_depth_mask(depth_path, mask_path, camera_intrinsics):
     mask_image = cv2.erode(mask_image, np.ones((5,5), np.uint8), iterations=1) # filter spurious edges
 
     ys, xs = np.where(mask_image > 0)
-    depths = depth_image[ys, xs].astype(np.float32)/255.0 # unit mm
+    depths = depth_image[ys, xs].astype(np.float32) #/255.0 # unit mm
 
     # Filter invalid depths
     valid = depths > 0
@@ -144,11 +144,11 @@ def process_dataset(pcd_dir, depth_dir, mask_dir, rgb_dir, intrinsics_json):
         print(f"Average Hausdorff: {np.mean(hausdorffs):.6f}")
 
 def main():
-    pcd_dir = "/workspace/EndoLRMGS/scared/initial_tools"
-    depth_dir = "/workspace/datasets/endolrm_dataset/scared/dataset_6/data/depth"
-    mask_dir = "/workspace/datasets/endolrm_dataset/scared/dataset_6/data/binary_mask_deva"
-    rgb_dir = "/workspace/datasets/endolrm_dataset/scared/dataset_6/data/left_finalpass"
-    camera_intrinsics_json = "/workspace/datasets/endolrm_dataset/scared/dataset_6/data/frame_data.json"
+    pcd_dir = "/workspace/EndoLRMGS/ablation_study/stereomis/v5/zxhezexin/postprocessed_tools"
+    depth_dir = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/depth"
+    mask_dir = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/binary_mask_deva"
+    rgb_dir = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/left_finalpass"
+    camera_intrinsics_json = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/frame_data.json"
     process_dataset(pcd_dir, depth_dir, mask_dir, rgb_dir, camera_intrinsics_json)
 
 if __name__ == "__main__":
