@@ -20,10 +20,10 @@ def create_point_cloud(rgb_file, depth_file, K, D, save_path=None):
     """Create point cloud from RGB and depth images."""
     # Read images
     rgb = cv2.imread(rgb_file)
-    rgb = cv2.resize(rgb, (640, 512))
+    rgb = cv2.resize(rgb, (1280, 1024))
     rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
     depth = cv2.imread(depth_file, cv2.IMREAD_GRAYSCALE).astype(float)
-    depth = cv2.resize(depth, (640, 512))
+    depth = cv2.resize(depth, (1280, 1024))
     # depth = depth[:,:,0] 
     # import ipdb; ipdb.set_trace()
     # Undistort images
@@ -66,12 +66,12 @@ def create_point_cloud(rgb_file, depth_file, K, D, save_path=None):
 
 def main():
     # Create output directory
-    output_dir = Path("/workspace/EndoLRMGS/endonerf/pulling/tissue_reconstruction")
+    output_dir = Path("/workspace/EndoLRMGS/stereomis/p3/zxhezexin/openlrm-mix-base-1.1/tissue_reconstruction")
     output_dir.mkdir(exist_ok=False, parents=True)
 
-    rgb_path = "/workspace/EndoLRMGS/endonerf/pulling/zxhezexin/openlrm-mix-base-1.1/rendered"
-    depth_path = "/workspace/EndoLRMGS/endonerf/pulling/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
-    calib_file = "/workspace/datasets/endolrm_dataset/endonerf/pulling/frame_data.json"
+    rgb_path = "/workspace/EndoLRMGS/stereomis/p3/zxhezexin/openlrm-mix-base-1.1/rendered"
+    depth_path = "/workspace/EndoLRMGS/stereomis/p3/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
+    calib_file = "/workspace/datasets/endolrm_dataset/stereomis/p3/frame_data.json"
 
     # Load camera parameters from calibration file
     K, D = load_camera_params(calib_file)

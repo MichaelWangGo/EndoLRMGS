@@ -59,8 +59,8 @@ def process_sequence(tools_path, tissue_path, output_path):
             continue
 
 if __name__ == "__main__":
-    tools_path = "/workspace/EndoLRMGS/endonerf/pulling/postprocessed_tools"
-    tissue_path = "/workspace/EndoLRMGS/endonerf/pulling/tissue_reconstruction"
-    output_path = "/workspace/EndoLRMGS/endonerf/pulling/final_results"
+    tools_path = "/workspace/EndoLRMGS/stereomis/p3/postprocessed_tools"
+    tissue_path = "/workspace/EndoLRMGS/stereomis/p3/zxhezexin/openlrm-mix-base-1.1/tissue_reconstruction"
+    output_path = "/workspace/EndoLRMGS/stereomis/p3/final_results"
     
     process_sequence(tools_path, tissue_path, output_path)
