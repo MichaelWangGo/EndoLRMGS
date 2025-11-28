@@ -162,10 +162,10 @@ def find_corresponding_gt(rendered_filename, gt_dir):
 
 def main():
     
-    pcd_path = "/workspace/EndoLRMGS/stereomis/p3/final_results"
-    reference_path = "/workspace/datasets/endolrm_dataset/stereomis/p3/left_finalpass"
-    calib_path = "/workspace/datasets/endolrm_dataset/stereomis/p3/frame_data.json"
-    image_size = (1024, 1280)
+    pcd_path = "/workspace/EndoLRMGS/endonerf/pulling/final_results"
+    reference_path = "/workspace/datasets/endolrm_dataset/endonerf/pulling/images"
+    calib_path = "/workspace/datasets/endolrm_dataset/endonerf/pulling/frame_data.json"
+    image_size = (512, 640)
 
     K, _ = load_calibration(calib_path)  # D ignored (images are calibrated)
     # Assume target image size from principal point in K or known dataset size
