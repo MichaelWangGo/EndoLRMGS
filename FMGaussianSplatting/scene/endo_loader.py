@@ -262,7 +262,7 @@ class SCARED_Dataset(object):
         elif "dataset_3" in datadir:
             skip_every = 4
         elif "dataset_6" in datadir:
-            skip_every = 8
+            skip_every = 1
         elif "dataset_7" in datadir:
             skip_every = 8
             
@@ -298,15 +298,33 @@ class SCARED_Dataset(object):
         calibs_dir = osp.join(self.root_dir, "data", "frame_data")
         rgbs_dir = osp.join(self.root_dir, "data", "left_finalpass")
         disps_dir = osp.join(self.root_dir, "data", "disparity")
+
         monodisps_dir = osp.join(self.root_dir, "data", "left_monodam")
         reproj_dir = osp.join(self.root_dir, "data", "reprojection_data")
         frame_ids = sorted([id[:-5] for id in os.listdir(calibs_dir)])
         frame_ids = frame_ids[::self.skip_every]
         n_frames = len(frame_ids)
+
+        # Check for masks after determining frame_ids
+        if os.path.exists(os.path.join(self.root_dir, "data", "binary_mask_deva")):
+            # Load masks matching the filtered frame_ids
+            self.masks_paths = [os.path.join(self.root_dir, "data", "binary_mask_deva", f"{frame_id}.png") 
+                                for frame_id in frame_ids]
+            # Verify all mask files exist
+            missing_masks = [p for p in self.masks_paths if not os.path.exists(p)]
+            if missing_masks:
+                print(f"Warning: {len(missing_masks)} mask files not found, will use full image for those frames")
+                self.masks_paths = None
+            else:
+                print(f"Loaded masks from binary_mask_deva: {len(self.masks_paths)} files")
+        else:
+            self.masks_paths = None
+            print("No masks directory found, will use full image")
         
         rgbs = []
         bds = []
         masks = []
+        tool_masks = []
         depths = []
         pose_mat = []
         camera_mat = []
@@ -347,14 +365,6 @@ class SCARED_Dataset(object):
                 depth[depth>self.depth_far_thresh] = 0
                 depth[depth<self.depth_near_thresh] = 0
             elif self.mode == 'monocular':
-                # disp_dir = osp.join(monodisps_dir, f"{frame_id}_depth.png")
-                # disp = iio.imread(disp_dir).astype(np.float32)[...,0] / 255.0
-                # h, w = disp.shape
-                # disp[disp!=0] = (1 / disp[disp!=0])
-                # disp[disp==0] = disp.max()
-                # depth = disp
-                # depth = (depth - depth.min()) / (depth.max()-depth.min())
-                # depth = self.depth_near_thresh + (self.depth_far_thresh-self.depth_near_thresh)*depth
                 disp_dir = osp.join(monodisps_dir, f"{frame_id}.png")
                 depth = iio.imread(disp_dir).astype(np.float32) / 255.0
                 h, w = depth.shape
@@ -377,13 +387,23 @@ class SCARED_Dataset(object):
         self.pose_mat = np.stack(pose_mat, axis=0).astype(np.float32)
         self.camera_mat = np.stack(camera_mat, axis=0).astype(np.float32)
         self.depths = np.stack(depths, axis=0).astype(np.float32)
-        self.masks = np.stack(masks, axis=0).astype(np.float32)
+        if self.masks_paths is not None:
+            self.masks = np.stack(masks, axis=0).astype(np.float32)
+        else:
+            self.masks = None
         self.bds = np.stack(bds, axis=0).astype(np.float32)
         self.times = np.linspace(0, 1, num=len(rgbs)).astype(np.float32)
         self.frame_ids = frame_ids
         
         camera_mat = self.camera_mat[0]
         self.focal = (camera_mat[0, 0], camera_mat[1, 1])
+
+        # Verify data consistency
+        assert len(rgbs) == len(depths), \
+            f"Number of images ({len(rgbs)}) and depth maps ({len(depths)}) must match"
+        if self.masks_paths is not None:
+            assert len(rgbs) == len(self.masks_paths), \
+                f"Number of images ({len(rgbs)}) and masks ({len(self.masks_paths)}) must match"
         
     def format_infos(self, split):
         cameras = []
@@ -410,7 +430,18 @@ class SCARED_Dataset(object):
             focal_x, focal_y = camera_mat[0, 0], camera_mat[1, 1]
             FovX = focal2fov(focal_x, self.img_wh[0])
             FovY = focal2fov(focal_y, self.img_wh[1])
-            
+
+            # Load and combine tool mask with disparity mask
+            if self.masks_paths is not None:
+                mask_path = self.masks_paths[idx]
+                tool_mask = np.array(Image.open(mask_path)) / 255.0
+                # Apply dilation to tool mask
+                kernel = np.ones((47, 47), np.uint8)
+                tool_mask = cv2.dilate(tool_mask, kernel, iterations=1)
+                tool_mask = 1 - tool_mask
+                # Combine with disparity mask
+                mask = mask & (torch.from_numpy(tool_mask).bool())
+
             cameras.append(Camera(colmap_id=idx,R=R,T=T,FoVx=FovX,FoVy=FovY,image=image, depth=depth, mask=mask, gt_alpha_mask=None,
                           image_name=f"{idx}",uid=idx,data_device=torch.device("cuda"),time=time,
                           Znear=self.depth_near_thresh, Zfar=self.depth_far_thresh))
@@ -434,12 +465,8 @@ class SCARED_Dataset(object):
                 project_valid_depth_only=True,
             )
             pcd = pcd.random_down_sample(0.1)
-            # pcd, _ = pcd.remove_radius_outlier(nb_points=5,
-            #                             radius=np.asarray(pcd.compute_nearest_neighbor_distance()).mean() * 10.)
             xyz, rgb = np.asarray(pcd.points).astype(np.float32), np.asarray(pcd.colors).astype(np.float32)
             normals = np.zeros((xyz.shape[0], 3))
-            
-            # o3d.io.write_point_cloud('tmp.ply', pcd)
             
             return xyz, rgb, normals
         
