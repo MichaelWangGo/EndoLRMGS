@@ -98,41 +98,45 @@ def project_points(Pc, K, image_size):
     valid &= (x >= 0) & (x < W) & (y >= 0) & (y < H)
     return x, y, z, valid
 
-
 def splat_points_to_image(x, y, z, valid, rgb, image_size, interpolate=False, hole_filling=True, gaussian_filter=False):
     """
     Z-buffer splat of points into an image canvas with optional post-processing.
     Input rgb is expected in RGB order; convert to BGR for OpenCV.
+    Returns:
+      img: rendered BGR image
+      depth: min depth map (float32), np.inf for pixels with no points
+      vis_mask: boolean visibility mask before any inpainting/smoothing
     """
     H, W = image_size
     img = np.zeros((H, W, 3), dtype=np.uint8)
     depth = np.full((H, W), np.inf, dtype=np.float32)
+    vis_mask = np.zeros((H, W), dtype=bool)
     colors = rgb if rgb is not None else np.full((x.shape[0], 3), 255, dtype=np.uint8)
     colors_bgr = colors[:, [2, 1, 0]]
 
-    # Z-buffer splatting with multi-sample per pixel (reduces aliasing)
+    # Z-buffer splatting: keep only the closest (minimum) depth per pixel
     for i in np.where(valid)[0]:
         xi, yi = x[i], y[i]
-        if z[i] < depth[yi, xi]:
-            depth[yi, xi] = z[i]
+        zi = z[i]
+        if zi < depth[yi, xi]:
+            depth[yi, xi] = zi
             img[yi, xi] = colors_bgr[i]
+            vis_mask[yi, xi] = True
 
-    # Fill holes using inpainting
+    # Preserve vis_mask from raw splat (before hole filling and smoothing)
+    # Optional hole filling for visualization only; vis_mask remains unchanged
     if hole_filling:
-        # import ipdb; ipdb.set_trace()
         mask = (img.sum(axis=2) == 0).astype(np.uint8)
         if mask.sum() > 0:
             img = cv2.inpaint(img, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
-    
-    # Apply slight Gaussian smoothing to reduce noise
+
     if gaussian_filter:
         img = cv2.GaussianBlur(img, (5, 5), 0.5)
 
     if interpolate:
-        # Apply edge-preserving interpolation over the whole image
         img = cv2.bilateralFilter(img, d=9, sigmaColor=25, sigmaSpace=7)
 
-    return img
+    return img, depth, vis_mask
 
 # Add a helper to crop borders by a given fraction on all sides
 def crop_border(img, frac=0.1):
@@ -144,6 +148,56 @@ def crop_border(img, frac=0.1):
     if b <= t or r <= l:
         return img
     return img[t:b, l:r]
+
+def crop_mask(mask, frac=0.1):
+    H, W = mask.shape[:2]
+    t = int(H * frac)
+    b = H - int(H * frac)
+    l = int(W * frac)
+    r = W - int(W * frac)
+    if b <= t or r <= l:
+        return mask
+    return mask[t:b, l:r]
+
+def masked_psnr(img_ref, img_pred, mask):
+    """
+    Compute PSNR only over pixels where mask is True.
+    img_ref, img_pred: uint8 BGR images
+    mask: boolean 2D array
+    """
+    if mask.sum() == 0:
+        return float('nan')
+    ref = img_ref.reshape(-1, 3)[mask.reshape(-1)]
+    pred = img_pred.reshape(-1, 3)[mask.reshape(-1)]
+    mse = np.mean((ref.astype(np.float32) - pred.astype(np.float32)) ** 2)
+    if mse == 0:
+        return float('inf')
+    PIX_MAX = 255.0
+    return 20.0 * np.log10(PIX_MAX) - 10.0 * np.log10(mse)
+
+def masked_ssim_global(img_ref_gray, img_pred_gray, mask):
+    """
+    Compute a global SSIM (single-window) over masked pixels using the standard SSIM formula.
+    This is not the sliding-window SSIM, but respects the vis_mask region.
+    """
+    m = mask.reshape(-1)
+    if m.sum() == 0:
+        return float('nan')
+    x = img_ref_gray.reshape(-1)[m].astype(np.float64)
+    y = img_pred_gray.reshape(-1)[m].astype(np.float64)
+    # Constants per skimage default for 8-bit images
+    L = 255.0
+    K1, K2 = 0.01, 0.03
+    C1 = (K1 * L) ** 2
+    C2 = (K2 * L) ** 2
+    mu_x = x.mean()
+    mu_y = y.mean()
+    sigma_x2 = x.var(ddof=1) if x.size > 1 else 0.0
+    sigma_y2 = y.var(ddof=1) if y.size > 1 else 0.0
+    sigma_xy = np.cov(x, y, ddof=1)[0, 1] if x.size > 1 else 0.0
+    num = (2 * mu_x * mu_y + C1) * (2 * sigma_xy + C2)
+    den = (mu_x ** 2 + mu_y ** 2 + C1) * (sigma_x2 + sigma_y2 + C2)
+    return float(num / den) if den != 0 else float('nan')
 
 def find_corresponding_gt(rendered_filename, gt_dir):
     """
@@ -162,10 +216,10 @@ def find_corresponding_gt(rendered_filename, gt_dir):
 
 def main():
     
-    pcd_path = "/workspace/EndoLRMGS/endonerf/pulling/final_results"
-    reference_path = "/workspace/datasets/endolrm_dataset/endonerf/pulling/images"
-    calib_path = "/workspace/datasets/endolrm_dataset/endonerf/pulling/frame_data.json"
-    image_size = (512, 640)
+    pcd_path = "/workspace/EndoLRMGS/stereomis/p3/final_results"
+    reference_path = "/workspace/datasets/endolrm_dataset/stereomis/p3/left_finalpass"
+    calib_path = "/workspace/datasets/endolrm_dataset/stereomis/p3/frame_data.json"
+    image_size = (1024, 1280)
 
     K, _ = load_calibration(calib_path)  # D ignored (images are calibrated)
     # Assume target image size from principal point in K or known dataset size
@@ -186,12 +240,15 @@ def main():
         # Assume xyz already in camera frame; do NOT apply pose
         x, y, z, valid = project_points(xyz, K, image_size)
         # Enable hole filling and slight smoothing
-        proj_img = splat_points_to_image(x, y, z, valid, rgb, image_size, 
-                                         interpolate=False, 
-                                         hole_filling=True, 
-                                         gaussian_filter=True)
+        proj_img, min_depth_map, vis_mask = splat_points_to_image(
+            x, y, z, valid, rgb, image_size,
+            interpolate=False,
+            hole_filling=True,
+            gaussian_filter=True
+        )
         debug_path = os.path.join("projection.png")
-
+        # Optionally record min depth map for debugging
+        # np.save(debug_path.replace("projection.png", "min_depth.npy"), min_depth_map)
 
         gt_name = find_corresponding_gt(ply_file, reference_path)
         if gt_name is None:
@@ -206,18 +263,27 @@ def main():
             gt_img = cv2.resize(gt_img, (proj_img.shape[1], proj_img.shape[0]), interpolation=cv2.INTER_AREA)
         gt_img = cv2.GaussianBlur(gt_img, (5, 5), 0.5)
 
-        # Crop 10% off each border for both images
+        # Crop 10% off each border for both images and mask
         proj_img_c = crop_border(proj_img, frac=0.1)
         gt_img_c = crop_border(gt_img, frac=0.1)
+        vis_mask_c = crop_mask(vis_mask, frac=0.1)
+
         cv2.imwrite(debug_path, proj_img_c)
         cv2.imwrite(debug_path.replace("projection.png", "gt_cropped.png"), gt_img_c)
-        # Metrics on cropped images
-        psnr_value = psnr(gt_img_c, proj_img_c, data_range=255)
-        ssim_value = ssim(cv2.cvtColor(gt_img_c, cv2.COLOR_BGR2GRAY),
-                          cv2.cvtColor(proj_img_c, cv2.COLOR_BGR2GRAY),
-                          data_range=255)
-        img1_rgb = cv2.cvtColor(gt_img_c, cv2.COLOR_BGR2RGB)
-        img2_rgb = cv2.cvtColor(proj_img_c, cv2.COLOR_BGR2RGB)
+
+        # Metrics computed only on visible pixels
+        psnr_value = masked_psnr(gt_img_c, proj_img_c, vis_mask_c)
+
+        gt_gray_c = cv2.cvtColor(gt_img_c, cv2.COLOR_BGR2GRAY)
+        proj_gray_c = cv2.cvtColor(proj_img_c, cv2.COLOR_BGR2GRAY)
+        ssim_value = masked_ssim_global(gt_gray_c, proj_gray_c, vis_mask_c)
+
+        # LPIPS over visible region: set non-visible pixels equal in both to neutralize influence
+        img1_rgb = cv2.cvtColor(gt_img_c, cv2.COLOR_BGR2RGB).astype(np.uint8)
+        img2_rgb = cv2.cvtColor(proj_img_c, cv2.COLOR_BGR2RGB).astype(np.uint8)
+        inv_mask = ~vis_mask_c
+        if inv_mask.any():
+            img2_rgb[inv_mask] = img1_rgb[inv_mask]
         img1_t = lpips.im2tensor(img1_rgb).cuda()
         img2_t = lpips.im2tensor(img2_rgb).cuda()
         lpips_value = loss_fn(img1_t, img2_t).item()
