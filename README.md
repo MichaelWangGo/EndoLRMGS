@@ -205,6 +205,7 @@ If you find this repository useful for your research, please consider citing our
 
 This project builds upon the following works:
 - [EndoGaussian](https://github.com/CUHK-AIM-Group/EndoGaussian.git)
+- [Deformable-3D-Gaussians](https://github.com/ingra14m/Deformable-3D-Gaussians)
 - [Mip-Splatting](https://github.com/autonomousvision/mip-splatting.git)
 - [LRM](https://yiconghong.me/LRM/)
 - [OpenLRM](https://github.com/3DTopia/OpenLRM.git)
