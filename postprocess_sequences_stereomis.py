@@ -11,7 +11,7 @@ try:
     import cupy as cp
     CUDA_AVAILABLE = True
     # Set CUDA device
-    cp.cuda.Device(1).use()
+    cp.cuda.Device(0).use()
     print("CUDA acceleration enabled on NVIDIA RTX A6000")
 except ImportError:
     CUDA_AVAILABLE = False
@@ -432,7 +432,7 @@ def process_sequence(pcd_paths, depth_path, mask_path, output_path, frame_num):
     combined_initial = initial_transformed_pcds[0]
     for extra in initial_transformed_pcds[1:]:
         combined_initial = combined_initial + extra
-    o3d.io.write_point_cloud(os.path.join(initial_tools_dir, f"frame_{frame_num}_combined_initial.ply"), combined_initial)
+    # o3d.io.write_point_cloud(os.path.join(initial_tools_dir, f"frame_{frame_num}_combined_initial.ply"), combined_initial)
 
     # Initial projection visualization
     height, width = tool_masks[0].shape
@@ -483,17 +483,17 @@ T_target = np.array([
     [0, 0, 0, 1]
 ])
 
-K1 = np.array([
-    [1033.894287109375, 0.0, 604.578857421875],
-    [0.0, 1033.7147216796875, 514.9761962890625],
-    [0.0, 0.0, 1.0]
-]) # p2_0
-
 # K1 = np.array([
-#     [1039.6275634765625, 0.0, 596.5435180664062],
-#     [0.0, 1039.4129638671875, 502.235595703125],
+#     [1033.894287109375, 0.0, 604.578857421875],
+#     [0.0, 1033.7147216796875, 514.9761962890625],
 #     [0.0, 0.0, 1.0]
-# ]) # p1
+# ]) # p2_0 p2_8
+
+K1 = np.array([
+    [1039.6275634765625, 0.0, 596.5435180664062],
+    [0.0, 1039.4129638671875, 502.235595703125],
+    [0.0, 0.0, 1.0]
+]) # p1
 
 # K1 = np.array([
 #     [1042.4930419921875, 0.0, 608.7192993164062],
@@ -501,13 +501,19 @@ K1 = np.array([
 #     [0.0, 0.0, 1.0]
 # ]) # p2_3
 
+# K1 = np.array([
+#     [1042.4930419921875, 0.0, 608.7192993164062],
+#     [0.0, 1042.2545166015625, 489.70538330078125],
+#     [0.0, 0.0, 1.0]
+# ]) # p3
+
 
 if __name__ == "__main__":
     # # Define base directories
-    pcd_base_dir = "/workspace/EndoLRMGS/stereomis/p2_0/zxhezexin/openlrm-mix-base-1.1/meshes"
-    depth_base_dir = "/workspace/EndoLRMGS/stereomis/p2_0/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
-    mask_base_dir = "/workspace/datasets/endolrm_dataset/stereomis/p2_0/Annotations"
-    output_base_dir = "/workspace/EndoLRMGS/stereomis/p2_0/postprocessed_tools"
+    pcd_base_dir = "/workspace/EndoLRMGS/stereomis/p1_new/zxhezexin/openlrm-mix-base-1.1/meshes"
+    depth_base_dir = "/workspace/EndoLRMGS/stereomis/p1_new/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
+    mask_base_dir = "/workspace/datasets/endolrm_dataset/stereomis/p1_new/Annotations"
+    output_base_dir = "/workspace/EndoLRMGS/stereomis/p1_new/postprocessed_tools"
 
     # Create output folder if it doesn't exist
     os.makedirs(output_base_dir, exist_ok=True)

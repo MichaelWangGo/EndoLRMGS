@@ -197,7 +197,7 @@ def splat_points_to_image(x, y, z, valid, rgb, image_size, interpolate=False, ho
 
         if mask.any():
             # 1. small dilation → erosion 填掉孔洞
-            kernel = np.ones((5, 5), np.uint8)
+            kernel = np.ones((3, 3), np.uint8)
             closed = cv2.morphologyEx(img, cv2.MORPH_CLOSE, kernel)
 
             # 2. Optional: guided filter 让颜色过渡更自然
@@ -265,6 +265,22 @@ def pair_ply_files_by_frame(tools_dir, tissue_dir):
     pairs = [(tools_map[n], tissue_map[n]) for n in common_frames]
     return pairs
 
+# New helper to decide mode
+def determine_active_pcd_paths(tools_pcd_path, tissue_pcd_path):
+    """
+    Determines which point cloud paths are usable.
+    Returns one of: 'both', 'tools_only', 'tissue_only', 'none'.
+    """
+    tools_ok = tools_pcd_path and os.path.isdir(tools_pcd_path)
+    tissue_ok = tissue_pcd_path and os.path.isdir(tissue_pcd_path)
+    if tools_ok and tissue_ok:
+        return 'both'
+    if tools_ok:
+        return 'tools_only'
+    if tissue_ok:
+        return 'tissue_only'
+    return 'none'
+
 def find_corresponding_mask(rendered_filename, mask_dir):
     """
     Match mask image by frame number extracted from filenames.
@@ -296,24 +312,37 @@ def load_binary_mask(mask_path, target_size):
 
 def main():
     
-    # pcd_path = "/workspace/EndoLRMGS/stereomis/p3/postprocessed_tools"
-    # reference_path = "/workspace/datasets/endolrm_dataset/stereomis/p3/left_finalpass"
-    # calib_path = "/workspace/datasets/endolrm_dataset/stereomis/p3/frame_data.json"
+    tools_pcd_path = "/workspace/EndoLRMGS/ablation_study/stereomis/base/postprocessed_tools"
+    # tools_pcd_path = None # if only test on tissue
+    tissue_pcd_path = "/workspace/EndoLRMGS/ablation_study/stereomis/base/zxhezexin/openlrm-mix-base-1.1/tissue_reconstruction"
+    # tissue_pcd_path = None
+    reference_path = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/left_finalpass"
+    mask_path = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/binary_mask_deva"
+    calib_path = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/frame_data.json"
+    image_size = (1024, 1280)
+
+    # # tools_pcd_path = "/workspace/EndoLRMGS/endonerf/pulling/postprocessed_tools"
+    # tools_pcd_path = None
+    # tissue_pcd_path = "/workspace/EndoLRMGS/endonerf/pulling/zxhezexin/openlrm-mix-base-1.1/tissue_reconstruction"
+    # # tissue_pcd_path = None
+    # reference_path = "/workspace/datasets/endolrm_dataset/endonerf/pulling/images"
+    # mask_path = "/workspace/datasets/endolrm_dataset/endonerf/pulling/binary_mask_deva"
+    # calib_path = "/workspace/datasets/endolrm_dataset/endonerf/pulling/frame_data.json"
+    # image_size = (512, 640)
+
+    # tools_pcd_path = "/workspace/EndoLRMGS/scared/postprocessed_tools"
+    # # tools_pcd_path = None
+    # # tissue_pcd_path = "/workspace/EndoLRMGS/scared/zxhezexin/openlrm-mix-base-1.1/tissue_reconstruction"
+    # tissue_pcd_path = None
+    # reference_path = "/workspace/datasets/endolrm_dataset/scared/dataset_6/data/left_finalpass"
+    # mask_path = "/workspace/datasets/endolrm_dataset/scared/dataset_6/data/binary_mask_deva"
+    # calib_path = "/workspace/datasets/endolrm_dataset/scared/dataset_6/data/frame_data.json"
     # image_size = (1024, 1280)
 
-    tools_pcd_path = "/workspace/EndoLRMGS/endonerf/pulling/postprocessed_tools"
-    tissue_pcd_path = "/workspace/EndoLRMGS/endonerf/pulling/zxhezexin/openlrm-mix-base-1.1/tissue_reconstruction"
-    reference_path = "/workspace/datasets/endolrm_dataset/endonerf/pulling/images"
-    mask_path = "/workspace/datasets/endolrm_dataset/endonerf/pulling/binary_mask_deva"
-    calib_path = "/workspace/datasets/endolrm_dataset/endonerf/pulling/frame_data.json"
-    image_size = (512, 640)
-
     K, _ = load_calibration(calib_path)  # D ignored (images are calibrated)
-
-    # Pair tool/tissue point clouds by frame number
-    pairs = pair_ply_files_by_frame(tools_pcd_path, tissue_pcd_path)
-    if not pairs:
-        raise FileNotFoundError(f"No paired .ply files between {tools_pcd_path} and {tissue_pcd_path}")
+    mode = determine_active_pcd_paths(tools_pcd_path, tissue_pcd_path)
+    if mode == 'none':
+        raise FileNotFoundError("No valid point cloud directory provided.")
 
     # LPIPS device setup
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -322,101 +351,164 @@ def main():
     # Accumulators
     psnr_list, ssim_list, lpips_list = [], [], []
 
-    for tools_file, tissue_file in pairs:
-        tools_path = os.path.join(tools_pcd_path, tools_file)
-        tissue_path = os.path.join(tissue_pcd_path, tissue_file)
+    if mode == 'both':
+        # Pair tool/tissue point clouds by frame number
+        pairs = pair_ply_files_by_frame(tools_pcd_path, tissue_pcd_path)
+        if not pairs:
+            raise FileNotFoundError(f"No paired .ply files between {tools_pcd_path} and {tissue_pcd_path}")
+        for tools_file, tissue_file in pairs:
+            tools_path = os.path.join(tools_pcd_path, tools_file)
+            tissue_path = os.path.join(tissue_pcd_path, tissue_file)
 
-        # Load mask for this frame
-        mask_name = find_corresponding_mask(tools_file, mask_path)
-        mask_full_path = os.path.join(mask_path, mask_name) if mask_name else None
-        mask_img = load_binary_mask(mask_full_path, image_size) if mask_full_path else None
-        if mask_img is None:
-            print(f"No mask for {tools_file}, proceeding without mask-constrained interpolation.")
+            # Load mask for this frame
+            mask_name = find_corresponding_mask(tools_file, mask_path)
+            mask_full_path = os.path.join(mask_path, mask_name) if mask_name else None
+            mask_img = load_binary_mask(mask_full_path, image_size) if mask_full_path else None
+            if mask_img is None:
+                print(f"No mask for {tools_file}, proceeding without mask-constrained interpolation.")
 
-        # Project tissue first (background)
-        tissue_xyz, tissue_rgb = load_point_cloud(tissue_path)
-        # Move arrays to GPU if cupy available
-        tissue_xyz = to_device_array(tissue_xyz)
-        tx, ty, tz, tvalid = project_points(tissue_xyz if not CUPY_AVAILABLE else cp.asnumpy(tissue_xyz), K, image_size)
-        tissue_img = splat_points_to_image(
-            tx, ty, tz, tvalid, tissue_rgb, image_size,
-            interpolate=False, hole_filling=True, gaussian_filter=True
-        )
+            # Project tissue first (background)
+            tissue_xyz, tissue_rgb = load_point_cloud(tissue_path)
+            # Move arrays to GPU if cupy available
+            tissue_xyz = to_device_array(tissue_xyz)
+            tx, ty, tz, tvalid = project_points(tissue_xyz if not CUPY_AVAILABLE else cp.asnumpy(tissue_xyz), K, image_size)
+            tissue_img = splat_points_to_image(
+                tx, ty, tz, tvalid, tissue_rgb, image_size,
+                interpolate=False, hole_filling=True, gaussian_filter=True
+            )
 
-        # Project tools second with interpolation
-        tools_xyz, tools_rgb = load_point_cloud(tools_path)
-        tools_xyz = to_device_array(tools_xyz)
-        sx, sy, sz, svalid = project_points(tools_xyz if not CUPY_AVAILABLE else cp.asnumpy(tools_xyz), K, image_size)
-        tools_img_raw = splat_points_to_image(
-            sx, sy, sz, svalid, tools_rgb, image_size,
-            interpolate=True, hole_filling=True, gaussian_filter=True
-        )
+            # Project tools second with interpolation
+            tools_xyz, tools_rgb = load_point_cloud(tools_path)
+            tools_xyz = to_device_array(tools_xyz)
+            sx, sy, sz, svalid = project_points(tools_xyz if not CUPY_AVAILABLE else cp.asnumpy(tools_xyz), K, image_size)
+            tools_img_raw = splat_points_to_image(
+                sx, sy, sz, svalid, tools_rgb, image_size,
+                interpolate=True, hole_filling=True, gaussian_filter=True
+            )
 
-        # Constrain interpolation to mask region:
-        # - Create a filtered version (already interpolated)
-        # - Combine filtered and raw outside mask to avoid bleeding
-        if mask_img is not None:
-            mask_bool = (mask_img > 0)
-            tools_img = np.zeros_like(tools_img_raw)
-            tools_img[mask_bool] = tools_img_raw[mask_bool]
-            # ensure outside-mask pixels are zero to avoid overlay leaks
-        else:
-            tools_img = tools_img_raw
+            # Constrain interpolation to mask region:
+            # - Create a filtered version (already interpolated)
+            # - Combine filtered and raw outside mask to avoid bleeding
+            if mask_img is not None:
+                mask_bool = (mask_img > 0)
+                tools_img = np.zeros_like(tools_img_raw)
+                tools_img[mask_bool] = tools_img_raw[mask_bool]
+                # ensure outside-mask pixels are zero to avoid overlay leaks
+            else:
+                tools_img = tools_img_raw
 
-        # Overlay tools on tissue
-        proj_img = overlay_tools_on_tissue(tissue_img, tools_img)
+            # Overlay tools on tissue
+            proj_img = overlay_tools_on_tissue(tissue_img, tools_img)
 
-        # Debug outputs
-        debug_path = os.path.join("projection.png")
+            # Debug outputs
+            debug_path = os.path.join("projection.png")
 
 
-        gt_name = find_corresponding_gt(tools_file, reference_path)
-        if gt_name is None:
-            print(f"No GT image found for {tools_file}, skipping.")
-            continue
-        gt_img = cv2.imread(os.path.join(reference_path, gt_name), cv2.IMREAD_COLOR)
-        if gt_img is None:
-            print(f"Failed to load GT {gt_name}, skipping.")
-            continue
+            gt_name = find_corresponding_gt(tools_file, reference_path)
+            if gt_name is None:
+                print(f"No GT image found for {tools_file}, skipping.")
+                continue
+            gt_img = cv2.imread(os.path.join(reference_path, gt_name), cv2.IMREAD_COLOR)
+            if gt_img is None:
+                print(f"Failed to load GT {gt_name}, skipping.")
+                continue
 
-        if proj_img.shape != gt_img.shape:
-            gt_img = cv2.resize(gt_img, (proj_img.shape[1], proj_img.shape[0]), interpolation=cv2.INTER_AREA)
-        gt_img = cv2.GaussianBlur(gt_img, (5, 5), 0.5)
+            if proj_img.shape != gt_img.shape:
+                gt_img = cv2.resize(gt_img, (proj_img.shape[1], proj_img.shape[0]), interpolation=cv2.INTER_AREA)
+            gt_img = cv2.GaussianBlur(gt_img, (5, 5), 0.5)
 
-        # Crop 10% off each border for both images
-        proj_img_c = crop_border(proj_img, frac=0.1)
-        gt_img_c = crop_border(gt_img, frac=0.1)
-        cv2.imwrite(debug_path, proj_img_c)
-        cv2.imwrite(debug_path.replace("projection.png", "gt_cropped.png"), gt_img_c)
+            # Crop 10% off each border for both images
+            proj_img_c = crop_border(proj_img, frac=0.1)
+            gt_img_c = crop_border(gt_img, frac=0.1)
+            cv2.imwrite(debug_path, proj_img_c)
+            cv2.imwrite(debug_path.replace("projection.png", "gt_cropped.png"), gt_img_c)
+            # import ipdb; ipdb.set_trace()
+            # Metrics on cropped images
+            psnr_value = psnr(gt_img_c, proj_img_c, data_range=255)
+            ssim_value = ssim(cv2.cvtColor(gt_img_c, cv2.COLOR_BGR2GRAY),
+                              cv2.cvtColor(proj_img_c, cv2.COLOR_BGR2GRAY),
+                              data_range=255)
+            # LPIPS on CUDA
+            img1_rgb = cv2.cvtColor(gt_img_c, cv2.COLOR_BGR2RGB)
+            img2_rgb = cv2.cvtColor(proj_img_c, cv2.COLOR_BGR2RGB)
+            img1_t = lpips.im2tensor(img1_rgb).to(device)
+            img2_t = lpips.im2tensor(img2_rgb).to(device)
+            lpips_value = loss_fn(img1_t, img2_t).item()
 
-        # Metrics on cropped images
-        psnr_value = psnr(gt_img_c, proj_img_c, data_range=255)
-        ssim_value = ssim(cv2.cvtColor(gt_img_c, cv2.COLOR_BGR2GRAY),
-                          cv2.cvtColor(proj_img_c, cv2.COLOR_BGR2GRAY),
-                          data_range=255)
-        # LPIPS on CUDA
-        img1_rgb = cv2.cvtColor(gt_img_c, cv2.COLOR_BGR2RGB)
-        img2_rgb = cv2.cvtColor(proj_img_c, cv2.COLOR_BGR2RGB)
-        img1_t = lpips.im2tensor(img1_rgb).to(device)
-        img2_t = lpips.im2tensor(img2_rgb).to(device)
-        lpips_value = loss_fn(img1_t, img2_t).item()
+            print(f"PSNR {psnr_value:.4f}, SSIM {ssim_value:.4f}, LPIPS {lpips_value:.4f}")
 
-        print(f"{tools_file} + {tissue_file} -> {gt_name}: PSNR {psnr_value:.4f}, SSIM {ssim_value:.4f}, LPIPS {lpips_value:.6f}")
+            # Accumulate
+            psnr_list.append(psnr_value)
+            ssim_list.append(ssim_value)
+            lpips_list.append(lpips_value)
+    else:
+        single_dir = tools_pcd_path if mode == 'tools_only' else tissue_pcd_path
+        ply_files = sorted([f for f in os.listdir(single_dir) if f.lower().endswith(".ply")])
+        if not ply_files:
+            raise FileNotFoundError(f"No .ply files found in {single_dir}")
+        for ply_file in ply_files:
+            pcd_path = os.path.join(single_dir, ply_file)
+            xyz, rgb = load_point_cloud(pcd_path)
+            # Project
+            xyz_arr = to_device_array(xyz)
+            px, py, pz, pvalid = project_points(xyz_arr if not CUPY_AVAILABLE else cp.asnumpy(xyz_arr), K, image_size)
+            interpolate_flag = (mode == 'tools_only')
+            proj_img = splat_points_to_image(
+                px, py, pz, pvalid, rgb, image_size,
+                interpolate=interpolate_flag, hole_filling=True, gaussian_filter=True
+            )
 
-        # Accumulate
-        psnr_list.append(psnr_value)
-        ssim_list.append(ssim_value)
-        lpips_list.append(lpips_value)
+            # Mask only if tools-only (optional interpolation constraint)
+            if mode == 'tools_only':
+                mask_name = find_corresponding_mask(ply_file, mask_path)
+                mask_full_path = os.path.join(mask_path, mask_name) if mask_name else None
+                mask_img = load_binary_mask(mask_full_path, image_size) if mask_full_path else None
+                if mask_img is not None:
+                    mbool = mask_img > 0
+                    masked = np.zeros_like(proj_img)
+                    masked[mbool] = proj_img[mbool]
+                    proj_img = masked
+
+            gt_name = find_corresponding_gt(ply_file, reference_path)
+            if gt_name is None:
+                print(f"No GT image for {ply_file}, skipping.")
+                continue
+            gt_img = cv2.imread(os.path.join(reference_path, gt_name), cv2.IMREAD_COLOR)
+            if gt_img is None:
+                print(f"Failed to load GT {gt_name}, skipping.")
+                continue
+            if proj_img.shape != gt_img.shape:
+                gt_img = cv2.resize(gt_img, (proj_img.shape[1], proj_img.shape[0]), interpolation=cv2.INTER_AREA)
+            gt_img = cv2.GaussianBlur(gt_img, (5, 5), 0.5)
+
+            proj_img_c = crop_border(proj_img, frac=0.1)
+            gt_img_c = crop_border(gt_img, frac=0.1)
+            cv2.imwrite("projection.png", proj_img_c)
+            cv2.imwrite("gt_cropped.png", gt_img_c)
+            # import ipdb; ipdb.set_trace()
+            psnr_value = psnr(gt_img_c, proj_img_c, data_range=255)
+            ssim_value = ssim(cv2.cvtColor(gt_img_c, cv2.COLOR_BGR2GRAY),
+                              cv2.cvtColor(proj_img_c, cv2.COLOR_BGR2GRAY),
+                              data_range=255)
+            img1_rgb = cv2.cvtColor(gt_img_c, cv2.COLOR_BGR2RGB)
+            img2_rgb = cv2.cvtColor(proj_img_c, cv2.COLOR_BGR2RGB)
+            img1_t = lpips.im2tensor(img1_rgb).to(device)
+            img2_t = lpips.im2tensor(img2_rgb).to(device)
+            lpips_value = loss_fn(img1_t, img2_t).item()
+
+            print(f"PSNR {psnr_value:.4f}, SSIM {ssim_value:.4f}, LPIPS {lpips_value:.6f}")
+            psnr_list.append(psnr_value)
+            ssim_list.append(ssim_value)
+            lpips_list.append(lpips_value)
 
     # Averages
     if psnr_list:
         avg_psnr = float(np.mean(psnr_list))
         avg_ssim = float(np.mean(ssim_list))
         avg_lpips = float(np.mean(lpips_list))
-        print(f"Average metrics over {len(psnr_list)} pairs: "
-              f"PSNR {avg_psnr:.4f}, SSIM {avg_ssim:.4f}, LPIPS {avg_lpips:.6f}")
+        print(f"Average metrics over {len(psnr_list)} items: PSNR {avg_psnr:.4f}, SSIM {avg_ssim:.4f}, LPIPS {avg_lpips:.6f}")
     else:
-        print("No valid pairs processed. No average metrics available.")
+        print("No valid point clouds processed.")
 
 if __name__ == "__main__":
     main()

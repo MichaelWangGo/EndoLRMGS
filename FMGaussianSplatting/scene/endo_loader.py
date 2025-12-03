@@ -785,6 +785,7 @@ class Stereomis_Dataset(object):
             int(1280 / downsample),
             int(1024 / downsample),
         )
+
         self.root_dir = datadir
         self.downsample = downsample 
         self.transform = T.ToTensor()
@@ -943,7 +944,7 @@ class Stereomis_Dataset(object):
                 mask = cv2.dilate(mask, kernel, iterations=1)
                 mask = 1 - mask
             else:
-                mask = np.ones((1024, 1280), dtype=np.float32)
+                mask = np.ones((self.img_wh[1], self.img_wh[0]), dtype=np.float32)
 
             # Load and process depth - fix the normalization
             depth_path = self.depth_paths[idx]
@@ -1000,7 +1001,7 @@ class Stereomis_Dataset(object):
             colors_total.append(colors_sel)
         pts_total = np.concatenate(pts_total)
         colors_total = np.concatenate(colors_total)
-        sel_idxs = np.random.choice(pts_total.shape[0], 30_000, replace=True)
+        sel_idxs = np.random.choice(pts_total.shape[0], 20_000, replace=True)
         pts, colors = pts_total[sel_idxs], colors_total[sel_idxs]
         normals = np.zeros((pts.shape[0], 3))
 
@@ -1034,7 +1035,7 @@ class Stereomis_Dataset(object):
             mask = cv2.dilate(mask, kernel, iterations=1)
             mask = 1 - mask
         else:
-            mask = np.ones((1024, 1280), dtype=np.float32)
+            mask = np.ones((self.img_wh[1], self.img_wh[0]), dtype=np.float32)
         
         # Load color
         color = np.array(Image.open(self.image_paths[idx])) / 255.0

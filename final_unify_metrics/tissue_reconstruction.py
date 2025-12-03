@@ -66,12 +66,12 @@ def create_point_cloud(rgb_file, depth_file, K, D, save_path=None):
 
 def main():
     # Create output directory
-    output_dir = Path("/workspace/EndoLRMGS/stereomis/p3/zxhezexin/openlrm-mix-base-1.1/tissue_reconstruction")
+    output_dir = Path("/workspace/datasets/endolrm_dataset/stereomis/p2_6/scene_reconstruction")
     output_dir.mkdir(exist_ok=False, parents=True)
 
-    rgb_path = "/workspace/EndoLRMGS/stereomis/p3/zxhezexin/openlrm-mix-base-1.1/rendered"
-    depth_path = "/workspace/EndoLRMGS/stereomis/p3/zxhezexin/openlrm-mix-base-1.1/rendered_depth"
-    calib_file = "/workspace/datasets/endolrm_dataset/stereomis/p3/frame_data.json"
+    rgb_path = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/left_finalpass"
+    depth_path = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/depth"
+    calib_file = "/workspace/datasets/endolrm_dataset/stereomis/p2_6/frame_data.json"
 
     # Load camera parameters from calibration file
     K, D = load_camera_params(calib_file)
