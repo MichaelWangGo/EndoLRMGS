@@ -54,20 +54,34 @@ def load_camera_intrinsics(json_path: str) -> Tuple[float, float, float, float]:
     cy = KL[1][2]
     return fx, fy, cx, cy
 
-def reconstruct_tools_from_depth_mask(depth_path, camera_intrinsics):
+def reconstruct_tools_from_depth_mask(depth_path, camera_intrinsics, mask_path=None):
     depth_image = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
 
     depths = depth_image.astype(np.float32) #/255.0 # unit mm
-
+    
+    # If depth image has multiple channels, squeeze to 2D
+    if len(depths.shape) == 3:
+        depths = depths[:, :, 0]  # Take first channel or use np.squeeze if all channels are identical
+    
     # Generate pixel coordinate grids
-    height, width = depth_image.shape
+    height, width = depths.shape
     ys, xs = np.mgrid[0:height, 0:width]
     xs = xs.flatten()
     ys = ys.flatten()
     depths = depths.flatten()
 
     # Filter invalid depths
-    valid = depths > 0
+    valid = depths > 1
+    
+    # Apply mask filter if provided
+    if mask_path is not None:
+        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        if mask is None:
+            raise ValueError(f"Failed to load mask from {mask_path}")
+        mask_flat = mask.flatten()
+
+        valid = valid & (mask_flat == 255)
+    
     xs, ys, depths = xs[valid], ys[valid], depths[valid]
 
     fx, fy, cx, cy = camera_intrinsics
@@ -104,53 +118,54 @@ def find_numbered_matches(depth_dir: str, rgb_dir: str, pcd_dir: str) -> List[Tu
     common = sorted(set(depth_map) & set(rgb_map) & set(pcd_map))
     return [(depth_map[i], rgb_map[i], pcd_map[i]) for i in common]
 
-def process_dataset(pcd_dir, depth_dir, rgb_dir, intrinsics_json):
+def process_dataset(render_depth_dir, gt_depth_dir, mask_dir, intrinsics_json):
     fx, fy, cx, cy = load_camera_intrinsics(intrinsics_json)
-    pairs = find_numbered_matches(depth_dir, rgb_dir, pcd_dir)
+    render_depths = _collect_numbered(render_depth_dir, (".png", ".exr", ".tiff"))
+    gt_depths = _collect_numbered(gt_depth_dir, (".png", ".exr", ".tiff"))
+    masks = _collect_numbered(mask_dir, (".png", ".jpg"))
+    common = sorted(set(render_depths) & set(gt_depths) & set(masks))
+    
     chamfers = []
     hausdorffs = []
-    # saved_sample = False
-    for depth_path, rgb_path, ref_path in pairs:
-        # Load rgb just to verify; ignore if missing
-        _ = cv2.imread(rgb_path, cv2.IMREAD_COLOR)
-        recon_pts = reconstruct_tools_from_depth_mask(depth_path, (fx, fy, cx, cy))
-        if recon_pts.shape[0] == 0:
+    
+    for idx in common:
+        render_depth_path = render_depths[idx]
+        gt_depth_path = gt_depths[idx]
+        mask_path = masks[idx]
+        
+        render_pts = reconstruct_tools_from_depth_mask(render_depth_path, (fx, fy, cx, cy), mask_path)
+        if render_pts.shape[0] == 0:
             continue
         
-        # # Save first valid reconstruction as sample
-        # if not saved_sample:
-        #     sample_pcd = o3d.geometry.PointCloud()
-        #     sample_pcd.points = o3d.utility.Vector3dVector(recon_pts)
-        #     sample_path = "/workspace/EndoLRMGS/stereomis/p1/reconstructed_tool_sample.ply"
-        #     o3d.io.write_point_cloud(sample_path, sample_pcd)
-        #     print(f"Saved sample reconstructed tool to {sample_path}")
-        #     saved_sample = True
-        
-        ref_pts = load_reference_point_cloud(ref_path)
-        if ref_pts.shape[0] == 0:
+        gt_pts = reconstruct_tools_from_depth_mask(gt_depth_path, (fx, fy, cx, cy), mask_path)
+        if gt_pts.shape[0] == 0:
             continue
-        # Downsample reference point cloud to match reconstruction size
-        if ref_pts.shape[0] > recon_pts.shape[0]:
-            sel = np.random.choice(ref_pts.shape[0], size=recon_pts.shape[0], replace=False)
-            ref_pts_ds = ref_pts[sel]
+        
+        # Downsample the larger point cloud to match the smaller one
+        if gt_pts.shape[0] > render_pts.shape[0]:
+            sel = np.random.choice(gt_pts.shape[0], size=render_pts.shape[0], replace=False)
+            gt_pts_ds = gt_pts[sel]
         else:
-            ref_pts_ds = ref_pts
-        cdist = chamfer_distance(recon_pts, ref_pts_ds)
-        hdist = hausdorff_distance(recon_pts, ref_pts_ds)
+            gt_pts_ds = gt_pts
+
+        cdist = chamfer_distance(render_pts, gt_pts_ds)
+        hdist = hausdorff_distance(render_pts, gt_pts_ds)
         chamfers.append(cdist)
         hausdorffs.append(hdist)
-        print(f"{os.path.basename(depth_path)} -> {os.path.basename(ref_path)} Chamfer={cdist:.6f} Hausdorff={hdist:.6f}")
+        print(f"{os.path.basename(render_depth_path)} Chamfer={cdist:.6f} Hausdorff={hdist:.6f}")
+    
     if chamfers:
         print(f"Average Chamfer: {np.mean(chamfers):.6f}")
     if hausdorffs:
         print(f"Average Hausdorff: {np.mean(hausdorffs):.6f}")
 
 def main():
-    recon_pcd_dir = "/workspace/EndoLRMGS/stereomis/p1/zxhezexin/openlrm-mix-base-1.1/tissue_reconstruction"
-    gt_depth_dir = "/workspace/datasets/endolrm_dataset/stereomis/p1/depth"
-    gt_rgb_dir = "/workspace/datasets/endolrm_dataset/stereomis/p1/left_finalpass"
-    camera_intrinsics_json = "/workspace/datasets/endolrm_dataset/stereomis/p1/frame_data.json"
-    process_dataset(recon_pcd_dir, gt_depth_dir, gt_rgb_dir, camera_intrinsics_json)
+    render_depth_dir = "/workspace/MipEndoGaussian/output/hamlyn/seq_7/test/ours_3000/depth"
+    gt_depth_dir = "/workspace/MipEndoGaussian/output/hamlyn/seq_7/test/ours_3000/gt_depth"
+    mask_dir = "/workspace/MipEndoGaussian/output/hamlyn/seq_7/test/ours_3000/masks"
+
+    camera_intrinsics_json = "/workspace/datasets/hamlyn_seq1/frame_data.json"
+    process_dataset(render_depth_dir, gt_depth_dir, mask_dir, camera_intrinsics_json)
 
 if __name__ == "__main__":
     main()
