@@ -55,7 +55,8 @@ pip install submodules/depth-diff-gaussian-rasterization
 pip install submodules/simple-knn
 cd ..
 
-# If you encountered error, like "ModuleNotFoundError: No module named 'torch'", please try this : pip install submodules/depth-diff-gaussian-rasterization --no-build-isolation
+# If you encountered error, like "ModuleNotFoundError: No module named 'torch'",
+# please try this : pip install submodules/depth-diff-gaussian-rasterization --no-build-isolation
 ```
 
 ## 📂 Dataset Preparation
