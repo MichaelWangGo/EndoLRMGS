@@ -79,7 +79,7 @@ def reconstruct_tools_from_depth_mask(depth_path, camera_intrinsics, mask_path=N
         if mask is None:
             raise ValueError(f"Failed to load mask from {mask_path}")
         mask_flat = mask.flatten()
-
+        # import ipdb; ipdb.set_trace()
         valid = valid & (mask_flat == 255)
     
     xs, ys, depths = xs[valid], ys[valid], depths[valid]
@@ -160,11 +160,11 @@ def process_dataset(render_depth_dir, gt_depth_dir, mask_dir, intrinsics_json):
         print(f"Average Hausdorff: {np.mean(hausdorffs):.6f}")
 
 def main():
-    render_depth_dir = "/workspace/MipEndoGaussian/output/hamlyn/seq_7/test/ours_3000/depth"
-    gt_depth_dir = "/workspace/MipEndoGaussian/output/hamlyn/seq_7/test/ours_3000/gt_depth"
-    mask_dir = "/workspace/MipEndoGaussian/output/hamlyn/seq_7/test/ours_3000/masks"
+    render_depth_dir = "/workspace/ForPlane/exps/endonerf/pulling/endonerf_32k/estm/test_rendered_depth"
+    gt_depth_dir = "/workspace/ForPlane/exps/endonerf/pulling/endonerf_32k/estm/processed_gt_depth"
+    mask_dir = "/workspace/ForPlane/exps/endonerf/pulling/endonerf_32k/estm/processed_mask"
 
-    camera_intrinsics_json = "/workspace/datasets/hamlyn_seq1/frame_data.json"
+    camera_intrinsics_json = "/workspace/datasets/endolrm_dataset/endonerf/pulling/frame_data.json"
     process_dataset(render_depth_dir, gt_depth_dir, mask_dir, camera_intrinsics_json)
 
 if __name__ == "__main__":

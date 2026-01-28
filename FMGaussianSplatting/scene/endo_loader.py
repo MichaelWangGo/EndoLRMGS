@@ -4,17 +4,17 @@ warnings.filterwarnings("ignore")
 
 import json
 import os
-# import random
+import random
 import os.path as osp
 
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
-from FMGaussianSplatting.scene.cameras import Camera
+from scene.cameras import Camera
 from typing import NamedTuple
-# from torch.utils.data import Dataset
-# from FMGaussianSplatting.utils.general_utils import PILtoTorch, percentile_torch
-from FMGaussianSplatting.utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
+from torch.utils.data import Dataset
+from utils.general_utils import PILtoTorch, percentile_torch
+from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
 import glob
 from torchvision import transforms as T
 import open3d as o3d
@@ -23,7 +23,7 @@ import imageio.v2 as iio
 import cv2
 import torch
 import fpsample
-# from torchvision import transforms
+from torchvision import transforms
 from dataclasses import dataclass
 
 
@@ -324,7 +324,6 @@ class SCARED_Dataset(object):
         rgbs = []
         bds = []
         masks = []
-        tool_masks = []
         depths = []
         pose_mat = []
         camera_mat = []
@@ -417,8 +416,8 @@ class SCARED_Dataset(object):
         for idx in idxs:
             image = self.rgbs[idx]
             image = self.transform(image)
-            mask = self.masks[idx]
-            mask = self.transform(mask).bool()
+            # mask = self.masks[idx]
+            # mask = self.transform(mask).bool()
             depth = self.depths[idx]
             depth = torch.from_numpy(depth)
             time = self.times[idx]
@@ -438,15 +437,18 @@ class SCARED_Dataset(object):
                 # Apply dilation to tool mask
                 kernel = np.ones((47, 47), np.uint8)
                 tool_mask = cv2.dilate(tool_mask, kernel, iterations=1)
-                tool_mask = 1 - tool_mask
+                mask = 1 - tool_mask
                 # Combine with disparity mask
-                mask = mask & (torch.from_numpy(tool_mask).bool())
+                # mask = mask & (torch.from_numpy(tool_mask).bool())
+            else:
+                mask = torch.from_numpy(np.ones((self.img_wh[1], self.img_wh[0]), dtype=np.float32)).bool()
+            mask = mask & (depth > self.depth_near_thresh) & (depth < self.depth_far_thresh)
 
             cameras.append(Camera(colmap_id=idx,R=R,T=T,FoVx=FovX,FoVy=FovY,image=image, depth=depth, mask=mask, gt_alpha_mask=None,
                           image_name=f"{idx}",uid=idx,data_device=torch.device("cuda"),time=time,
                           Znear=self.depth_near_thresh, Zfar=self.depth_far_thresh))
         return cameras
-            
+
     def get_init_pts(self, mode='hgi', sampling='random'):
         if mode == 'o3d':
             pose = self.pose_mat[0]
@@ -473,7 +475,11 @@ class SCARED_Dataset(object):
         elif mode == 'hgi':
             pts_total, colors_total = [], []
             for idx in self.train_idxs:
-                color, depth, mask = self.rgbs[idx], self.depths[idx], self.masks[idx]
+                if self.masks is not None:
+                    mask = self.masks[idx]
+                else:
+                    mask = torch.from_numpy(np.ones_like(self.depths[idx])).bool()
+                color, depth = self.rgbs[idx], self.depths[idx]
                 if self.mode == 'binocular':
                     mask = np.logical_and(mask, (depth>self.depth_near_thresh), (depth<self.depth_far_thresh))
                 pts, colors, _ = self.get_pts_cam(depth, mask, color, disable_mask=False)
