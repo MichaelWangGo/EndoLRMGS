@@ -172,6 +172,11 @@ accelerate launch --config_file ./configs/accelerate-train.yaml \
     --gaussian_config ./FMGaussianSplatting/arguments/scared/d6k4.py
 ```
 
+### Optimize surgical instruments via OPjPO
+```bash
+python postprocess_sequences_stereomis.py
+```
+
 ### Evaluation
 To evaluate the reconstructed tissues and surgical instruments, use the following scripts:
 
