@@ -192,10 +192,9 @@ python postprocess_sequences_stereomis.py
 python ./evaluation/tools_reprojection_loss.py
 ```
 
-## 🔍 Visualization
+## Visualization
 
-### To generate a spinning point cloud
-Please refer to another repo: https://github.com/MichaelWangGo/3D_spinning_visualization.git
+To generate a spinning point cloud, please refer to another repo: https://github.com/MichaelWangGo/3D_spinning_visualization.git
 
 ## Frequency-Modulated Gaussian Splatting
 
