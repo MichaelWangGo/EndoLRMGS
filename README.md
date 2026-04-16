@@ -198,7 +198,7 @@ Please refer to another repo: https://github.com/MichaelWangGo/3D_spinning_visua
 
 ## Frequency-Modulated Gaussian Splatting
 
-Please refer to another repo: https://github.com/MichaelWangGo/Frequency-Modulated-Gaussian-Splatting.git
+If you are only interested in FMGS, please refer to another repo: https://github.com/MichaelWangGo/Frequency-Modulated-Gaussian-Splatting.git
 
 ## 📑 Citation
 
