@@ -11,6 +11,9 @@ To address these issues we propose **EndoLRMGS**, that combines **Large Reconstr
 ## 🏗️ Architecture
 
 ![m3dris-architecture](media/pipeline.png)
+
+##  Supplementary results
+
 ![EndoLRMGS Demo](media/demo.gif)
 
 ## 📋 Table of Contents
