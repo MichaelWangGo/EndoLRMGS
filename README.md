@@ -99,7 +99,7 @@ For EndoNerf pulling dataset:
 python -m openlrm.launch infer.lrm \
     --infer ./configs/infer-b-endonerf-pulling.yaml \
     --model_name zxhezexin/openlrm-mix-base-1.1 \
-    --image_input /workspace/dataset/endolrm_dataset/endonerf/pulling/images \
+    --image_input /workspace/datasets/endolrm_dataset/endonerf/pulling/images \
     --export_mesh true \
     --gaussian_config ./FMGaussianSplatting/arguments/endonerf/pulling.py
 ```
@@ -109,7 +109,7 @@ For EndoNerf cutting dataset:
 python -m openlrm.launch infer.lrm \
     --infer ./configs/infer-b-endonerf-cutting.yaml \
     --model_name zxhezexin/openlrm-mix-base-1.1 \
-    --image_input /workspace/dataset/endolrm_dataset/endonerf/cutting_tissues_twice/images \
+    --image_input /workspace/datasets/endolrm_dataset/endonerf/cutting_tissues_twice/images \
     --export_mesh true \
     --gaussian_config ./FMGaussianSplatting/arguments/endonerf/cutting.py
 ```
@@ -129,7 +129,7 @@ For Scared dataset:
 python -m openlrm.launch infer.lrm \
     --infer ./configs/infer-b-scared.yaml \
     --model_name zxhezexin/openlrm-mix-base-1.1 \
-    --image_input /workspace/dataset/endolrm_dataset/scared/dataset_6/data/left_finalpass \
+    --image_input /workspace/datasets/endolrm_dataset/scared/dataset_6/data/left_finalpass \
     --export_mesh true \
     --gaussian_config ./FMGaussianSplatting/arguments/scared/d6k4.py
 ```
@@ -195,6 +195,10 @@ python ./evaluation/tools_reprojection_loss.py
 
 ### To generate a spinning point cloud
 Please refer to another repo: https://github.com/MichaelWangGo/3D_spinning_visualization.git
+
+## Frequency-Modulated Gaussian Splatting
+
+Please refer to another repo: https://github.com/MichaelWangGo/Frequency-Modulated-Gaussian-Splatting.git
 
 ## 📑 Citation
 
