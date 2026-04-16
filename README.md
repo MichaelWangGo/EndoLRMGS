@@ -67,6 +67,7 @@ Download the required surgical datasets:
 - [EndoNeRF Dataset](https://github.com/med-air/EndoNeRF)
 - [SCARED Dataset](https://endovissub2019-scared.grand-challenge.org/)
 - [StereoMIS Dataset](https://www.synapse.org/#!Synapse:syn25101790)
+- [Curated Hamlyn Dataset](https://download.loping151.com/hamlyn_forplane)
 
 ### 2. Prepare Annotations
 
