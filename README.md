@@ -211,7 +211,7 @@ If you find this repository useful for your research, please consider citing our
 ```
 @article{xuwang_EndoLRMGS,
   title={EndoLRMGS: Complete Endoscopic Scene Reconstruction combining Large Reconstruction Modelling and Gaussian Splatting},
-  author={Xu Wang},
+  author={Xu Wang, Shuai Zhang, Baoru Huang, Jialang Xu, Danail Stoyanov, and Evangelos B. Mazomenos,
   journal={arXiv preprint arXiv:2503.22437},
   year={2025}
 }
