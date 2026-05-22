@@ -209,7 +209,7 @@ If you are only interested in FMGS, please refer to another repo: https://github
 If you find this repository useful for your research, please consider citing our work:
 
 ```
-@article{your_article_id,
+@article{xuwang_EndoLRMGS,
   title={EndoLRMGS: Complete Endoscopic Scene Reconstruction combining Large Reconstruction Modelling and Gaussian Splatting},
   author={Xu Wang},
   journal={arXiv preprint arXiv:2503.22437},
