@@ -1,6 +1,6 @@
 # EndoLRMGS
 
-### [📄 arXiv Paper](https://arxiv.org/abs/2503.22437)
+<!-- ### [📄 arXiv Paper](https://arxiv.org/abs/2503.22437) -->
 
 ## 📝 Abstract
 
@@ -204,7 +204,7 @@ To generate a spinning point cloud, please refer to another repo: https://github
 
 If you are only interested in FMGS, please refer to another repo: https://github.com/MichaelWangGo/Frequency-Modulated-Gaussian-Splatting.git
 
-## 📑 Citation
+<!-- ## 📑 Citation
 
 If you find this repository useful for your research, please consider citing our work:
 
@@ -215,7 +215,7 @@ If you find this repository useful for your research, please consider citing our
   journal={arXiv preprint arXiv:2503.22437},
   year={2025}
 }
-```
+``` -->
 
 ## 🙏 Acknowledgements
 
