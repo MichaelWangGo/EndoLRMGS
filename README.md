@@ -95,6 +95,15 @@ endonerf/               # Root directory
 └── stereomis/
 ```
 
+### 4. Pre-processed EndoNeRF Dataset
+
+For quick prototyping, we provide a pre-processed EndoNeRF dataset that includes:
+- Surgical instrument mask annotations (color-coded)
+- Binary segmentation masks (generated via DEVA)
+- Our reconstruction results
+
+Download from: [EndoLRMGS_endonerf](https://drive.google.com/drive/folders/1zhYnVXXgWDMCvA6vV4CR5PIovzKykaS4?usp=drive_link)
+
 ## 🚀 Usage
 
 ### Inference
