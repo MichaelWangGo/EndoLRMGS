@@ -1,6 +1,6 @@
 # EndoLRMGS
 
-### [📄Our paper is accepted to IEEE TMI](https://ieeexplore.ieee.org/document/11579428)
+### 📄Our paper is accepted to [IEEE TMI](https://ieeexplore.ieee.org/document/11579428)
 
 ## 📝 Abstract
 
